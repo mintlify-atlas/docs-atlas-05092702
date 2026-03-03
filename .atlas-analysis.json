@@ -1,0 +1,139 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "SpeedyBot",
+  "projectDescription": "Build conversation bots for WebEx with a streamlined TypeScript SDK featuring zero dependencies and multi-platform support",
+  "theme": "palm",
+  "primaryColor": "#0C7DC6",
+  "lightColor": "#47B0E8",
+  "darkColor": "#084D7D",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/speedybot-basics",
+              "concepts/middleware-steps",
+              "concepts/context-state",
+              "concepts/webhooks"
+            ]
+          },
+          {
+            "group": "SpeedyCards",
+            "pages": [
+              "speedycards/overview",
+              "speedycards/building-cards",
+              "speedycards/card-components",
+              "speedycards/handling-submissions"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/handling-files",
+              "guides/user-input",
+              "guides/llm-integration",
+              "guides/deployment",
+              "guides/error-handling"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/overview",
+              "cli/setup",
+              "cli/token",
+              "cli/webhook"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Classes",
+            "pages": [
+              "api/speedybot",
+              "api/speedycard",
+              "api/magic-dollar"
+            ]
+          },
+          {
+            "group": "Types & Interfaces",
+            "pages": [
+              "api/types",
+              "api/message-types",
+              "api/card-types"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/utilities",
+              "api/constants"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Platform Examples",
+            "pages": [
+              "examples/overview",
+              "examples/cloudflare-workers",
+              "examples/aws-lambda",
+              "examples/deno",
+              "examples/standard-server"
+            ]
+          },
+          {
+            "group": "Feature Examples",
+            "pages": [
+              "examples/llm-streaming",
+              "examples/location-sharing",
+              "examples/voiceflow-integration",
+              "examples/file-processing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Zero dependencies - lightweight and fast",
+    "Step-based middleware system for event handling",
+    "SpeedyCard builder for Adaptive Cards",
+    "Multi-platform support (serverless, workers, standard servers)",
+    "Built-in TypeScript support with full type hints",
+    "CLI tools for scaffolding and webhook management",
+    "File upload and form submission handling",
+    "LLM token streaming support"
+  ],
+  "publicApiSurface": [
+    "SpeedyBot - Main bot orchestration class",
+    "SpeedyCard - Adaptive card builder",
+    "addStep() - Add middleware step",
+    "addStepSequence() - Add multiple steps",
+    "$.send() - Send messages",
+    "$.reply() - Reply to messages",
+    "$.card() - Create cards",
+    "setToken() - Configure bot token",
+    "addSecret() - Store secrets",
+    "CLI: speedybot setup - Scaffold projects",
+    "CLI: speedybot token - Inspect tokens",
+    "CLI: speedybot webhook - Manage webhooks"
+  ]
+}
