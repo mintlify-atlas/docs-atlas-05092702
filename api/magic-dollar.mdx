@@ -1,0 +1,590 @@
+---
+title: $ parameter (magic dollar)
+description: The magic $ parameter available in middleware handlers
+---
+
+The `$` parameter ("magic dollar") is passed to every middleware handler and contains context about the incoming message plus helper methods.
+
+## Type signature
+
+```typescript
+type $Magic<T = AttachedData> = IncomingItem<T> & HelperMethods
+```
+
+## Control flow
+
+### next
+
+Continues to the next middleware in the chain.
+
+```typescript
+$.next: boolean = true
+```
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  // Do something
+  return $.next; // Continue processing
+});
+```
+
+### end
+
+Stops middleware processing.
+
+```typescript
+$.end: boolean = false
+```
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  await $.send('Goodbye!');
+  return $.end; // Stop processing
+});
+```
+
+## Message data
+
+### messageType
+
+Type of incoming message.
+
+```typescript
+$.messageType: "text" | "file" | "card"
+```
+
+### id
+
+Message identifier.
+
+```typescript
+$.id: string
+```
+
+### text
+
+Message text content (stripped of @-mentions in groups).
+
+```typescript
+$.text?: string
+```
+
+<Expandable title="Details">
+For text messages, this contains the full message text. In group rooms, the bot's @-mention is automatically removed.
+
+For card submissions with chips, this contains the chip value.
+
+Undefined for card submissions without chips.
+</Expandable>
+
+### data
+
+Card submission data.
+
+```typescript
+$.data?: T
+```
+
+<Expandable title="Details">
+Available when `$.messageType === "card"`. Contains all input field values from the submitted card.
+
+Generic type `T` allows for type-safe data access:
+
+```typescript
+type TicketData = {
+  title: string;
+  priority: string;
+  description: string;
+};
+
+Bot.addStep<TicketData>(async ($) => {
+  if ($.data) {
+    const { title, priority, description } = $.data;
+    // TypeScript knows the shape of the data
+  }
+  return $.next;
+});
+```
+</Expandable>
+
+### file
+
+File attachment details and data accessor.
+
+```typescript
+$.file?: SpeedyFileUtils
+```
+
+<ResponseField name="file.url" type="string">
+  File URL
+</ResponseField>
+
+<ResponseField name="file.name" type="string">
+  File name
+</ResponseField>
+
+<ResponseField name="file.extension" type="string">
+  File extension (without dot)
+</ResponseField>
+
+<ResponseField name="file.contentType" type="string">
+  MIME type
+</ResponseField>
+
+<ResponseField name="file.bytes" type="number">
+  File size in bytes
+</ResponseField>
+
+<ResponseField name="file.getData" type="function">
+  Async method to retrieve file contents
+</ResponseField>
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.file && $.file.extension === 'json') {
+    const data = await $.file.getData<MyDataType>();
+    await $.send(`Received ${$.file.name} (${$.file.bytes} bytes)`);
+  }
+  return $.next;
+});
+```
+
+## Author information
+
+### author
+
+Details about the message sender.
+
+```typescript
+$.author: {
+  domain: string;      // Email domain (@example.com)
+  email: string;       // Full email address
+  id: string;          // Person ID
+  org: string;         // Organization ID
+  name: string;        // Display name
+  type: "person" | "bot" | "appuser";
+  profilePic: string;  // Avatar URL
+}
+```
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  const { name, email, domain } = $.author;
+  
+  // Restrict by domain
+  if (domain !== 'company.com') {
+    await $.send('Access denied');
+    return $.end;
+  }
+  
+  await $.send(`Hello ${name}!`);
+  return $.next;
+});
+```
+
+## Room context
+
+### msg
+
+Room and message context.
+
+```typescript
+$.msg: {
+  parentId?: string;        // Parent message ID (for threads)
+  roomId: string;           // Room identifier
+  roomType: "group" | "direct";
+  mentionedPeople: string[]; // Array of mentioned person IDs (excluding bot)
+}
+```
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.msg.roomType === 'direct') {
+    await $.send('Thanks for the DM!');
+  } else {
+    await $.send('Thanks for the group message!');
+  }
+  return $.next;
+});
+```
+
+## Context storage
+
+### ctx
+
+Custom context object for passing data between middleware.
+
+```typescript
+$.ctx: { [key: string]: string | number | boolean }
+```
+
+**Example:**
+
+```typescript
+// Initial context passed to runMiddleware
+Bot.runMiddleware(webhook, { userId: '123', requestId: 456 });
+
+// Access in middleware
+Bot.addStep(async ($) => {
+  const userId = $.ctx.userId;
+  const requestId = $.ctx.requestId;
+  return $.next;
+});
+```
+
+## Message sending methods
+
+### send
+
+Sends a message to the room where the trigger occurred.
+
+```typescript
+$.send(message: Message): Promise<MessageResponse>
+```
+
+<ParamField path="message" type="Message" required>
+  String, number, Card, or SpeedyCard
+</ParamField>
+
+**Example:**
+
+```typescript
+await $.send('Hello!');
+await $.send($.card().addTitle('Card'));
+```
+
+### reply
+
+Replies to the incoming message (creates a thread).
+
+```typescript
+$.reply(message: string): Promise<MessageResponse>
+```
+
+<ParamField path="message" type="string" required>
+  Reply text
+</ParamField>
+
+### edit
+
+Edits a previously sent message.
+
+```typescript
+$.edit(
+  messageObj: MessageResponse,
+  newText: string
+): Promise<MessageResponse>
+```
+
+<ParamField path="messageObj" type="MessageResponse" required>
+  Message to edit (from previous send/reply)
+</ParamField>
+
+<ParamField path="newText" type="string" required>
+  New message text
+</ParamField>
+
+**Example:**
+
+```typescript
+const msg = await $.send('Processing...');
+await someAsyncWork();
+await $.edit(msg, '✅ Complete!');
+```
+
+### sendFile
+
+Sends data as a downloadable file.
+
+```typescript
+$.sendFile<T = unknown>(
+  data: T,
+  fileExtension: string
+): Promise<MessageResponse>
+```
+
+<ParamField path="data" type="T" required>
+  File data (objects are JSON-stringified)
+</ParamField>
+
+<ParamField path="fileExtension" type="string" required>
+  Extension ("json", "txt", etc.)
+</ParamField>
+
+**Example:**
+
+```typescript
+const report = { users: 150, active: 120 };
+await $.sendFile(report, 'json');
+```
+
+### clearScreen
+
+Clears the chat screen by sending newlines.
+
+```typescript
+$.clearScreen(repeatCount?: number): Promise<MessageResponse>
+```
+
+<ParamField path="repeatCount" type="number" optional>
+  Number of newlines (default: 50, max: 5000)
+</ParamField>
+
+## Card creation
+
+### card
+
+Creates a new SpeedyCard.
+
+```typescript
+$.card(config?: Partial<AbbreviatedSpeedyCard>): SpeedyCard
+```
+
+<ParamField path="config" type="AbbreviatedSpeedyCard" optional>
+  Quick card configuration
+</ParamField>
+
+**Example:**
+
+```typescript
+const card = $.card({
+  title: 'Welcome',
+  chips: ['help', 'docs']
+});
+
+await $.send(card);
+```
+
+## Thread creation
+
+### thread
+
+Creates a message thread.
+
+```typescript
+$.thread(
+  threadData: [string | SpeedyCard, ...string[]] & {
+    length: 1 | 2 | 3 | 4 | 5 | 6
+  }
+): Promise<boolean>
+```
+
+<ParamField path="threadData" type="array" required>
+  Array with root message and up to 5 replies
+</ParamField>
+
+**Example:**
+
+```typescript
+await $.thread([
+  'Root message',
+  'Reply 1',
+  'Reply 2',
+  'Reply 3'
+]);
+```
+
+## File operations
+
+### getFile
+
+Retrieves file from URL.
+
+```typescript
+$.getFile(
+  url: string,
+  opts?: { responseType?: "arraybuffer" | "json" }
+): Promise<SpeedyFileUtils>
+```
+
+<ParamField path="url" type="string" required>
+  File URL
+</ParamField>
+
+<ParamField path="opts" type="object" optional>
+  Response type options
+</ParamField>
+
+## Utility methods
+
+### buildLink
+
+Creates a markdown link.
+
+```typescript
+$.buildLink(
+  target: string,
+  label?: string,
+  noBold?: boolean
+): string
+```
+
+<ParamField path="target" type="string" required>
+  URL
+</ParamField>
+
+<ParamField path="label" type="string" optional>
+  Link text (defaults to URL)
+</ParamField>
+
+<ParamField path="noBold" type="boolean" optional>
+  Disable bold formatting
+</ParamField>
+
+**Returns:** `**[label](url)**` or `[label](url)`
+
+### buildDMLink
+
+Creates a link to open a direct message.
+
+```typescript
+$.buildDMLink(target: string, label: string): string
+```
+
+<ParamField path="target" type="string" required>
+  Target email address
+</ParamField>
+
+<ParamField path="label" type="string" required>
+  Link text
+</ParamField>
+
+### buildDataSnippet
+
+Formats data as a code block.
+
+```typescript
+$.buildDataSnippet(data: any, type?: string): string
+```
+
+<ParamField path="data" type="any" required>
+  Data to format
+</ParamField>
+
+<ParamField path="type" type="string" optional>
+  Code block language (default: "json")
+</ParamField>
+
+**Example:**
+
+```typescript
+const snippet = $.buildDataSnippet({ status: 'ok' });
+await $.send(snippet);
+// Outputs a formatted JSON code block
+```
+
+### pickRandom
+
+Picks random item or number.
+
+```typescript
+$.pickRandom<T>(list: T[]): T
+$.pickRandom(min: number, max: number): number
+```
+
+<ParamField path="list" type="T[]" optional>
+  Array to pick from
+</ParamField>
+
+<ParamField path="min" type="number" optional>
+  Minimum number
+</ParamField>
+
+<ParamField path="max" type="number" optional>
+  Maximum number
+</ParamField>
+
+**Example:**
+
+```typescript
+const greeting = $.pickRandom(['Hello', 'Hi', 'Hey']);
+const dice = $.pickRandom(1, 6);
+```
+
+### fillTemplate
+
+Fills template strings with values.
+
+```typescript
+$.fillTemplate(
+  utterances: string[],
+  template: { [key: string]: string | number }
+): string
+```
+
+<ParamField path="utterances" type="string[]" required>
+  Template strings with `$[key]` placeholders
+</ParamField>
+
+<ParamField path="template" type="object" required>
+  Values to replace
+</ParamField>
+
+**Example:**
+
+```typescript
+const message = $.fillTemplate(
+  ['Hello $[name], your score is $[score]!'],
+  { name: 'Alice', score: 100 }
+);
+// "Hello Alice, your score is 100!"
+```
+
+### debug
+
+Returns debug information.
+
+```typescript
+$.debug(): DebugInfo
+```
+
+**Returns:** Object with message type, text, author, room info, etc.
+
+## Complete example
+
+```typescript
+Bot.addStep(async ($) => {
+  // Check message type
+  if ($.messageType === 'text' && $.text) {
+    // Access author info
+    const { name, email } = $.author;
+    
+    // Check room context
+    if ($.msg.roomType === 'direct') {
+      // Send response
+      await $.send(`Hi ${name}!`);
+      
+      // Send a card
+      const card = $.card({
+        title: 'Welcome',
+        chips: ['help', 'about']
+      });
+      await $.send(card);
+    }
+  }
+  
+  // Handle file uploads
+  if ($.file && $.file.extension === 'json') {
+    const data = await $.file.getData();
+    await $.send($.buildDataSnippet(data));
+  }
+  
+  // Handle card submissions
+  if ($.data) {
+    await $.send('Form submitted!');
+    return $.end;
+  }
+  
+  return $.next;
+});
+```

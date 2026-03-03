@@ -1,0 +1,440 @@
+---
+title: Voiceflow integration
+description: Build conversation-designed bots with natural language understanding
+---
+
+## Overview
+
+Integrating with [Voiceflow](https://www.voiceflow.com/) allows you to separate conversation design from code. Design rich conversational experiences visually, while SpeedyBot handles the Webex integration.
+
+<Info>
+If you find yourself writing extensive text parsing code, stop. Delegate content handling to tools that leverage conversation design and natural language understanding.
+</Info>
+
+![Voiceflow CultureBot](https://raw.githubusercontent.com/valgaze/speedybot-utils/main/assets/various/voiceflow_culturebot.gif?raw=true)
+
+## Use case
+
+Voiceflow integration enables:
+
+- **Visual conversation design** - Build flows without coding
+- **Natural language** - Users communicate naturally, not with keywords
+- **Content separation** - Designers manage content, developers handle integration
+- **Rich components** - Cards, buttons, chips, carousels designed in Voiceflow
+- **Rapid iteration** - Update content without redeploying code
+
+<Tip>
+LLMs are not a replacement for good conversation design. These agents need to be useful and well-designed based on real user research.
+</Tip>
+
+## Setup
+
+<Steps>
+
+<Step title="Quick setup (automated)">
+
+Use the SpeedyBot CLI for automated setup:
+
+```bash
+npx -y speedybot@^2.0.0 setup \
+  --project voiceflow \
+  -e BOT_TOKEN \
+  -e VOICEFLOW_API_KEY \
+  --install \
+  --boot
+```
+
+</Step>
+
+<Step title="Manual setup: Clone repo">
+
+If you prefer manual setup:
+
+```bash
+git clone https://github.com/valgaze/speedybot
+cd speedybot/examples/voiceflow
+npm install
+```
+
+</Step>
+
+<Step title="Configure bot token">
+
+Create a bot at [https://developer.webex.com/my-apps/new/bot](https://developer.webex.com/my-apps/new/bot)
+
+Create `.env` file:
+
+```bash
+BOT_TOKEN=your-token-here
+```
+
+</Step>
+
+<Step title="Import Voiceflow project">
+
+1. Create a free account at [https://creator.voiceflow.com/signup](https://creator.voiceflow.com/signup)
+2. Click the import button (top right)
+3. Import `settings/voiceflow_project.vf` from the example
+
+![Voiceflow Import](https://raw.githubusercontent.com/valgaze/speedybot-utils/main/assets/various/voiceflow_import.gif?raw=true)
+
+</Step>
+
+<Step title="Publish your project">
+
+<Warning>
+You must publish your Voiceflow project at least once before it becomes available to your bot.
+</Warning>
+
+Click **Publish** (top right corner):
+
+![Voiceflow Publish](https://raw.githubusercontent.com/valgaze/speedybot-utils/main/assets/various/voiceflow_publish.gif?raw=true)
+
+</Step>
+
+<Step title="Get API key">
+
+From Voiceflow:
+
+1. Click the integrations button (sidebar)
+2. Copy your API key
+
+![Voiceflow API Key](https://raw.githubusercontent.com/valgaze/speedybot-utils/main/assets/various/voiceflow_get_key.gif?raw=true)
+
+Add to `.env`:
+
+```bash
+BOT_TOKEN=your-bot-token
+VOICEFLOW_API_KEY=VF.DM.your-key-here
+```
+
+</Step>
+
+<Step title="Run the bot">
+
+```bash
+npm run dev
+```
+
+Your bot runs locally using websockets - no deployment or webhooks needed for development.
+
+</Step>
+
+</Steps>
+
+## Implementation
+
+### Bot configuration
+
+```typescript
+import { SpeedyBot, $Magic } from "speedybot";
+import {
+  processResponse,
+  VFHelper,
+  VF_SUBMIT_LABEL,
+  VF_SUBMIT_LABEL_INTENT,
+} from "./voiceflow";
+
+const Bot = new SpeedyBot<"VOICEFLOW_API_KEY">();
+
+// Handle card and chip interactions
+Bot.addStep(async ($) => {
+  const vf_inst = new VFHelper(Bot.getSecret("VOICEFLOW_API_KEY") as string);
+  
+  if ($.data && typeof $.data === "object") {
+    if ($.data[VF_SUBMIT_LABEL] || $.data[VF_SUBMIT_LABEL_INTENT]) {
+      // User tapped a button or chip
+      await Bot.deleteMessage($.id);
+      const session = $.author.id;
+      
+      const id = $.data[VF_SUBMIT_LABEL] as string;
+      const intent = $.data[VF_SUBMIT_LABEL_INTENT] as string;
+      
+      let res = Boolean(intent)
+        ? await vf_inst.clickIntent(session, intent)
+        : await vf_inst.clickButton(session, id);
+      
+      // Handle stale cards
+      if (!res.length) {
+        Bot.deleteMessage($.id);
+        res = await vf_inst.launch(session);
+      }
+      
+      const tidyResponse = vf_inst.simplifyResponse(res);
+      await processResponse($, tidyResponse);
+    }
+  }
+  
+  return $.next;
+});
+
+export default Bot;
+```
+
+### Text message handler
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.text) {
+    const vf_inst = new VFHelper(Bot.getSecret("VOICEFLOW_API_KEY") as string);
+    const session = $.author.id;
+    let hasVisited = await vf_inst.getData<true | null>("hasVisited", session);
+    let res;
+    
+    try {
+      if (!hasVisited) {
+        // First time user - launch conversation
+        res = await vf_inst.launch(session);
+        await vf_inst.saveTheData(session, { hasVisited: true });
+      } else {
+        // Send user's message to Voiceflow
+        res = await vf_inst.send($.text, session);
+      }
+      
+      const tidyResponse = vf_inst.simplifyResponse(res);
+      const { hasEnd, text } = tidyResponse;
+      
+      if (hasEnd && !text.length) {
+        // Reached end of conversation - relaunch
+        const res = await vf_inst.launch(session);
+        await processResponse($, vf_inst.simplifyResponse(res));
+      } else {
+        await processResponse($, tidyResponse);
+      }
+    } catch (e) {
+      $.send(`Error: ${e}`);
+    }
+  }
+  return $.next;
+});
+```
+
+### Process Voiceflow responses
+
+The `processResponse` function converts Voiceflow responses to SpeedyCards:
+
+```typescript
+export async function processResponse(
+  $: $Magic,
+  response: SimplifiedResponse
+) {
+  const { text, cards, choices, images } = response;
+  
+  // Send text messages
+  for (const msg of text) {
+    await $.send(msg);
+  }
+  
+  // Send images
+  for (const img of images) {
+    await $.send($.card().addImage(img));
+  }
+  
+  // Send interactive cards
+  for (const vfCard of cards) {
+    const card = $.card();
+    
+    if (vfCard.title) card.addTitle(vfCard.title);
+    if (vfCard.description) card.addText(vfCard.description);
+    if (vfCard.imageUrl) card.addImage(vfCard.imageUrl);
+    
+    // Add buttons
+    for (const button of vfCard.buttons) {
+      if (button.url) {
+        card.addLinkButton(button.url, button.name);
+      } else {
+        card.addButton(button.name, VF_SUBMIT_LABEL, {
+          data: button.request.payload.actions[0].payload.path
+        });
+      }
+    }
+    
+    await $.send(card);
+  }
+  
+  // Send suggestion chips
+  if (choices.length) {
+    const chips = choices.map(choice => ({
+      title: choice.name,
+      value: choice.name,
+    }));
+    await $.send($.card().addChips(chips));
+  }
+}
+```
+
+## Response types
+
+Voiceflow can send various response types that SpeedyBot handles:
+
+### Text messages
+
+```typescript
+{
+  text: ["Hello!", "How can I help you today?"]
+}
+```
+
+### Cards with buttons
+
+```typescript
+{
+  cards: [{
+    title: "Team Resources",
+    description: "Quick access to common tools",
+    imageUrl: "https://example.com/image.png",
+    buttons: [
+      { name: "Wiki", url: "https://wiki.example.com" },
+      { name: "Support", request: { /* Voiceflow path */ } }
+    ]
+  }]
+}
+```
+
+### Suggestion chips
+
+```typescript
+{
+  choices: [
+    { name: "Get started" },
+    { name: "Learn more" },
+    { name: "Contact support" }
+  ]
+}
+```
+
+### Images
+
+```typescript
+{
+  images: ["https://example.com/diagram.png"]
+}
+```
+
+## Voiceflow helper
+
+The `VFHelper` class manages Voiceflow API interactions:
+
+<CodeGroup>
+
+```typescript Launch conversation
+const vf = new VFHelper(apiKey);
+const response = await vf.launch(sessionId);
+```
+
+```typescript Send user message
+const response = await vf.send("I need help", sessionId);
+```
+
+```typescript Handle button clicks
+const response = await vf.clickButton(sessionId, pathId);
+```
+
+```typescript Trigger intents
+const response = await vf.clickIntent(sessionId, intentName);
+```
+
+```typescript Store session data
+await vf.saveTheData(sessionId, { 
+  preferences: "dark_mode",
+  lastVisit: Date.now() 
+});
+```
+
+```typescript Retrieve session data
+const prefs = await vf.getData("preferences", sessionId);
+```
+
+</CodeGroup>
+
+## Custom runtime endpoint
+
+If you have a custom Voiceflow runtime:
+
+```typescript
+// In settings/voiceflow.ts
+export const BASE_URL = "https://your-custom-runtime.com";
+```
+
+<Note>
+The default runtime is `https://general-runtime.voiceflow.com`
+</Note>
+
+## File upload handling
+
+The basic integration doesn't process file uploads:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.file) {
+    await $.send(`This agent does not currently support file uploads`);
+  }
+  return $.next;
+});
+```
+
+For file upload support with knowledge base integration, see the [Voiceflow Knowledge Base example](/examples/voiceflow-kb).
+
+## Error handling
+
+Never leave users without feedback:
+
+```typescript
+Bot.captureError(async (payload) => {
+  const { roomId, message } = payload;
+  if (roomId) {
+    await Bot.sendTo(roomId, `Whoops, there was a problem: ${message}`);
+  }
+});
+```
+
+## Design patterns
+
+### CultureBot use case
+
+The example implements a "CultureBot" that:
+
+- Provides quick access to team resources
+- Answers common questions about company culture
+- Links to internal tools and documentation
+- Handles natural language queries
+
+### Benefits of separation
+
+<Steps>
+
+<Step title="Designers own content">
+Conversation designers can update flows, add content, and refine experiences without touching code.
+</Step>
+
+<Step title="Natural language">
+Users don't need to learn keywords or commands - they communicate naturally.
+</Step>
+
+<Step title="Visual design">
+Flows are visible and testable in Voiceflow's canvas.
+</Step>
+
+<Step title="Rapid iteration">
+Publish changes in Voiceflow instantly - no redeployment needed.
+</Step>
+
+</Steps>
+
+## Testing and iteration
+
+1. **Design in Voiceflow** - Build conversation flows visually
+2. **Test in Voiceflow** - Use built-in testing tools
+3. **Publish** - Make changes available to your bot
+4. **Test in Webex** - Verify the integration works
+5. **Iterate** - Refine based on real usage
+
+<Warning>
+Remember to click **Publish** in Voiceflow after making changes. Your bot only sees the published version.
+</Warning>
+
+## Next steps
+
+- Add file upload support with [Voiceflow Knowledge Base](/examples/voiceflow-kb)
+- Deploy to production with [deployment guides](/deploy)
+- Learn about [SpeedyCards](/speedycards) for custom components

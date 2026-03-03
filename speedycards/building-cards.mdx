@@ -1,0 +1,445 @@
+---
+title: Building cards
+description: Learn the card builder methods and patterns for creating SpeedyCards
+---
+
+## Card builder methods
+
+SpeedyCards provide a fluent API for building Adaptive Cards. All methods return `this` to enable method chaining.
+
+## Title and subtitle
+
+### addTitle
+
+Add a large, bold title to your card.
+
+```typescript
+addTitle(title: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('Welcome to SpeedyBot');
+```
+
+### addSubtitle
+
+Add a subtitle below the title.
+
+```typescript
+addSubtitle(subTitle: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('Customer Survey')
+  .addSubtitle('Help us improve our service');
+```
+
+## Text and formatting
+
+### addText
+
+Add text content with optional formatting options.
+
+```typescript
+addText(
+  text: string,
+  config?: {
+    bold?: boolean;
+    size?: SizeChoices;
+    align?: AlignmentChoices;
+    color?: ColorChoices;
+    backgroundColor?: ColorChoices;
+    vertAlign?: VAlignChoices;
+  }
+): SpeedyCard
+```
+
+<Tip>
+Text blocks support basic markdown including **bold**, *italics*, and [links](url).
+</Tip>
+
+```typescript
+const card = $.card()
+  .addText('Default text')
+  .addText('Large bold text', { size: 'Large', bold: true })
+  .addText('Colored text', { color: 'green' })
+  .addText('With background', { 
+    color: 'red', 
+    backgroundColor: 'yellow' 
+  })
+  .addText('Right aligned', { align: 'Right' })
+  .addText('Text with **markdown** and *italics*');
+```
+
+#### Size options
+
+- `Small`
+- `Default`
+- `Medium`
+- `Large`
+- `ExtraLarge`
+- `Stretch`
+
+#### Color options
+
+- `Default`, `Dark`, `Light`, `Accent`
+- `Good` (green), `Warning` (yellow), `Attention` (red)
+- `blue`, `red`, `green`, `yellow` (shortcuts)
+
+#### Alignment options
+
+- `Left`, `Center`, `Right`
+
+### addHeader
+
+Add a header with optional icon and styling.
+
+```typescript
+addHeader(
+  text: string,
+  config?: HeaderConfig
+): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addHeader('🤖 SpeedyBot', {
+    iconURL: 'https://example.com/icon.png',
+    textSize: 'Large',
+    textColor: 'blue',
+    backgroundColor: 'light'
+  });
+
+// RTL support for right-to-left languages
+const rtlCard = $.card()
+  .addHeader('العنوان', { rtl: true });
+```
+
+### addLink
+
+Add a clickable link (rendered as bold markdown).
+
+```typescript
+addLink(url: string, label?: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addLink('https://speedybot.js.org', 'Visit SpeedyBot Docs');
+```
+
+## Images
+
+### addImage
+
+Add an image with optional sizing and click action.
+
+```typescript
+addImage(
+  url: string,
+  config?: {
+    size?: SizeChoices;
+    align?: AlignmentChoices;
+    targetURL?: string;
+  }
+): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addImage('https://example.com/image.png', {
+    size: 'Large',
+    align: 'Center'
+  });
+
+// Clickable image
+const clickableCard = $.card()
+  .addImage('https://example.com/thumbnail.png', {
+    targetURL: 'https://example.com/full-size.png',
+    size: 'Medium'
+  });
+```
+
+## Buttons
+
+### addButton
+
+Add a submit button that attaches data when clicked.
+
+```typescript
+addButton(
+  label: string,
+  id?: string,
+  attachedData?: string | { [key: string]: any }
+): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addText('Choose an action:')
+  .addButton('Approve', 'action', 'approve')
+  .addButton('Reject', 'action', 'reject');
+
+// Handle in a step
+Bot.addStep(async ($) => {
+  if ($.data?.action === 'approve') {
+    await $.send('Approved!');
+  }
+  return $.next;
+});
+```
+
+### addLinkButton
+
+Add a button that opens a URL.
+
+```typescript
+addLinkButton(url: string, label?: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addText('Learn more about SpeedyBot')
+  .addLinkButton('https://speedybot.js.org', 'Documentation');
+```
+
+### addDeleteButton
+
+Add a pre-configured delete button.
+
+```typescript
+addDeleteButton(label?: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addText('Remove this card')
+  .addDeleteButton('Delete');
+```
+
+## Tables
+
+### addTable
+
+Display structured data in a table format.
+
+```typescript
+addTable(
+  input: (string | number)[][] | { [key: string]: string | number },
+  separator?: boolean
+): SpeedyCard
+```
+
+<CodeGroup>
+```typescript Array format
+const card = $.card()
+  .addTitle('Server Stats')
+  .addTable([
+    ['Server', 'Status'],
+    ['Web-01', 'Online'],
+    ['Web-02', 'Online'],
+    ['DB-01', 'Maintenance']
+  ]);
+```
+
+```typescript Object format
+const card = $.card()
+  .addTitle('User Info')
+  .addTable({
+    'Name': 'John Doe',
+    'Email': 'john@example.com',
+    'Role': 'Admin',
+    'Status': 'Active'
+  });
+```
+</CodeGroup>
+
+## Containers and layout
+
+### addBlock
+
+Add a text block or nest another SpeedyCard with optional styling.
+
+```typescript
+addBlock(
+  content: string | SpeedyCard,
+  config?: {
+    backgroundColor?: ColorChoices;
+    vertAlign?: VAlignChoices;
+    separator?: boolean;
+  }
+): SpeedyCard
+```
+
+```typescript
+// Text block with background
+const card = $.card()
+  .addBlock('Important message', {
+    backgroundColor: 'yellow',
+    separator: true
+  });
+
+// Nested card
+const nestedCard = $.card()
+  .addText('Nested content')
+  .addText('More info');
+
+const mainCard = $.card()
+  .addTitle('Main Card')
+  .addBlock(nestedCard, {
+    backgroundColor: 'light'
+  });
+```
+
+### addSubcard
+
+Add a collapsible subcard that reveals when a button is tapped.
+
+```typescript
+addSubcard(card: SpeedyCard | Card, textLabel?: string): SpeedyCard
+```
+
+```typescript
+const detailsCard = $.card()
+  .addTitle('More Details')
+  .addText('This content is hidden until the button is tapped')
+  .addTable([
+    ['Property', 'Value'],
+    ['Created', '2024-01-01'],
+    ['Status', 'Active']
+  ]);
+
+const mainCard = $.card()
+  .addTitle('Quick Summary')
+  .addText('This is the main content')
+  .addSubcard(detailsCard, 'Show Details');
+```
+
+## Background and styling
+
+### setBackgroundImage
+
+Set a background image for the entire card.
+
+```typescript
+setBackgroundImage(url: string): SpeedyCard
+```
+
+<Warning>
+Background images should be subtle and not interfere with text readability. Consider using data URIs for patterns.
+</Warning>
+
+```typescript
+const card = $.card()
+  .addTitle('🚨 Alert')
+  .addText('This is an important message')
+  .setBackgroundImage('data:image/png;base64,...');
+```
+
+### setSubmitButtonTitle
+
+Customize the submit button label for forms.
+
+```typescript
+setSubmitButtonTitle(label: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('Contact Form')
+  .addTextInput('Your name', 'name')
+  .addTextInput('Email address', 'email')
+  .setSubmitButtonTitle('Send Message');
+```
+
+## Data attachment
+
+### attachData
+
+Attach hidden data to the card that will be included in the submission.
+
+```typescript
+attachData(payload: AttachedData): SpeedyCard
+```
+
+<Tip>
+Use attached data to include context like user IDs, session tokens, or workflow identifiers that the user doesn't need to see.
+</Tip>
+
+```typescript
+const card = $.card()
+  .addTitle('Approve Request')
+  .addText('Request #12345')
+  .addButton('Approve', 'action', 'approve')
+  .attachData({
+    requestId: '12345',
+    userId: $.author.id,
+    timestamp: Date.now()
+  });
+
+Bot.addStep(async ($) => {
+  if ($.data?.action === 'approve') {
+    const { requestId, userId } = $.data;
+    // Process approval with context
+    await $.send(`Request ${requestId} approved`);
+  }
+  return $.next;
+});
+```
+
+## Building the card
+
+### build
+
+Generate the Adaptive Card JSON. This is called automatically by SpeedyBot when sending.
+
+```typescript
+build(): Card
+```
+
+```typescript
+const card = $.card()
+  .addTitle('My Card')
+  .addText('Content');
+
+// Automatic (preferred)
+await $.send(card);
+
+// Manual (if you need the JSON)
+const cardJson = card.build();
+console.log(JSON.stringify(cardJson, null, 2));
+```
+
+## Pattern: App cards
+
+The `Bot.appCard()` helper creates cards with a header and icon, perfect for application notifications:
+
+```typescript
+const card = Bot.appCard(
+  'Design Updates',
+  'https://example.com/icon.png'
+)
+  .addText('New features available')
+  .addLinkButton('https://example.com', 'Learn More');
+
+// With RTL support
+const rtlCard = Bot.appCard(
+  'التحديثات',
+  'https://example.com/icon.png',
+  { rtl: true }
+)
+  .addText('محتوى جديد', { align: 'Right' });
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Card components" icon="puzzle-piece" href="./card-components">
+    Learn about chips, forms, pickers, and more
+  </Card>
+  <Card title="Handling submissions" icon="paper-plane" href="./handling-submissions">
+    Process form data from cards
+  </Card>
+</CardGroup>

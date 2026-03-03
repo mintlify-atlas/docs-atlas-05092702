@@ -1,0 +1,184 @@
+---
+title: speedybot webhook
+description: Create, list, and manage webhooks for your SpeedyBot with the webhook command
+---
+
+The `webhook` command helps you manage webhooks associated with your bot token. Webhooks allow WebEx to send real-time notifications to your server when events occur.
+
+## Basic usage
+
+```bash
+npx -y speedybot@latest webhook <subcommand>
+```
+
+## Subcommands
+
+### list
+
+Display all webhooks registered with your bot token:
+
+```bash
+npx -y speedybot@latest webhook list
+```
+
+This shows:
+- Webhook IDs
+- Target URLs
+- Event types being monitored
+- Webhook status
+- Creation dates
+
+### create
+
+Register a new webhook with WebEx:
+
+```bash
+npx -y speedybot@latest webhook create -w https://www.myinfra.com -t tokenvalue -s secretvalue
+```
+
+<ParamField path="-w, --webhook-url" type="string" required>
+  The public URL where WebEx will send event notifications. Must be HTTPS in production.
+</ParamField>
+
+<ParamField path="-t, --token" type="string" required>
+  Your bot access token. Get this from the [WebEx developer portal](https://developer.webex.com/my-apps).
+</ParamField>
+
+<ParamField path="-s, --secret" type="string" required>
+  A secret string used to verify webhook payloads. Choose a strong, random value.
+</ParamField>
+
+### remove
+
+Delete webhooks associated with your token:
+
+```bash
+npx -y speedybot@latest webhook remove
+```
+
+This command will prompt you to select which webhooks to remove.
+
+<Warning>
+Removing webhooks will immediately stop event delivery to those endpoints. Your bot will stop receiving messages until you create new webhooks or switch to websocket mode.
+</Warning>
+
+## Examples
+
+### List existing webhooks
+
+Check what webhooks are currently registered:
+
+```bash
+npx -y speedybot@latest webhook list
+```
+
+### Create a webhook for production
+
+Register a webhook pointing to your production server:
+
+```bash
+npx -y speedybot@latest webhook create \
+  -w https://mybot.example.com/webhook \
+  -t aabbcc112233445566 \
+  -s my-super-secret-key-123
+```
+
+### Create webhook for local development
+
+If you're using a tunnel service like ngrok:
+
+```bash
+# First, start ngrok
+ngrok http 3000
+
+# Then create the webhook with the ngrok URL
+npx -y speedybot@latest webhook create \
+  -w https://abc123.ngrok.io/webhook \
+  -t $BOT_TOKEN \
+  -s $WEBHOOK_SECRET
+```
+
+<Info>
+For local development, using websockets (the default mode) is often easier than setting up webhooks and tunnels.
+</Info>
+
+### Clean up old webhooks
+
+Remove webhooks that are no longer needed:
+
+```bash
+npx -y speedybot@latest webhook remove
+```
+
+## Webhooks vs websockets
+
+SpeedyBot supports two modes for receiving events:
+
+**Webhooks** (HTTP callbacks):
+- WebEx sends HTTP POST requests to your server
+- Requires a publicly accessible HTTPS endpoint
+- Better for production deployments
+- Works with serverless functions
+- More scalable for high-traffic bots
+
+**Websockets** (persistent connection):
+- Bot maintains an open connection to WebEx
+- No public URL needed
+- Perfect for local development
+- Automatic reconnection handling
+- Default mode for SpeedyBot starter projects
+
+<Note>
+Websockets are enabled by default in SpeedyBot projects, so you don't need webhooks during initial development.
+</Note>
+
+## Webhook security
+
+The `--secret` parameter is crucial for security:
+
+1. WebEx signs each webhook request with your secret
+2. Your server validates the signature to confirm authenticity
+3. This prevents unauthorized parties from impersonating WebEx
+
+SpeedyBot automatically handles signature validation when you provide the secret.
+
+<Warning>
+Always use HTTPS for production webhooks. WebEx requires HTTPS endpoints and will reject HTTP URLs.
+</Warning>
+
+## Common issues
+
+### Webhook creation fails
+
+If webhook creation fails, verify:
+- Your URL is publicly accessible
+- The URL uses HTTPS (required for production)
+- You're not exceeding the webhook limit (100 per token)
+- Your token is valid and has proper permissions
+
+### Not receiving webhook events
+
+If webhooks aren't working:
+- Check that your server is running and accessible
+- Verify your firewall allows incoming connections
+- Confirm the webhook is still registered (use `webhook list`)
+- Check server logs for failed signature validation
+- Ensure your secret matches what you specified during creation
+
+### Multiple webhooks
+
+You can register multiple webhooks per token:
+- Different URLs for different environments
+- Separate webhooks for different event types
+- Redundant webhooks for high availability
+
+Use `webhook list` to see all registered webhooks.
+
+## Getting help
+
+View detailed help for webhook commands:
+
+```bash
+npm init speedybot@latest webhook -- --help
+npx -y speedybot@latest webhook --help
+```

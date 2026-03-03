@@ -1,0 +1,520 @@
+---
+title: Processing file uploads
+description: Handle document uploads and extract data for processing
+---
+
+## Overview
+
+SpeedyBot makes it easy to handle file uploads from Webex users. Access file metadata, download contents, and process various file types including documents, images, and spreadsheets.
+
+<Info>
+File uploads can enable powerful workflows like document analysis, data extraction, image processing, and knowledge base population.
+</Info>
+
+## Use case
+
+File processing enables bots to:
+
+- **Extract data** from spreadsheets or documents
+- **Analyze content** using LLMs or other AI services
+- **Store files** in cloud storage or databases
+- **Process images** for OCR or computer vision
+- **Build knowledge bases** from uploaded documents (RAG pattern)
+
+## Basic file handling
+
+### Detect file uploads
+
+Check for file uploads in your bot handler:
+
+```typescript
+import { SpeedyBot } from "speedybot";
+
+const Bot = new SpeedyBot();
+
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const { name, extension, contentType } = $.file;
+    await $.send(
+      `You uploaded "${name}", a *.${extension} file [${contentType}]`
+    );
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+### Access file metadata
+
+The `$.file` object provides file information:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const {
+      name,           // "document.pdf"
+      extension,      // "pdf"
+      contentType,    // "application/pdf"
+      url,            // Temporary download URL
+      bytes          // File size in bytes
+    } = $.file;
+    
+    await $.send(
+      `File: ${name}\n` +
+      `Type: ${contentType}\n` +
+      `Size: ${(bytes / 1024).toFixed(2)} KB`
+    );
+  }
+  return $.next;
+});
+```
+
+### Download file contents
+
+Retrieve the raw file data:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.file) {
+    // Get file contents as bytes
+    const fileData = await $.file.getData();
+    
+    // Process the data
+    // - Send to external API
+    // - Store in database
+    // - Analyze with AI
+    // - Extract text/data
+    
+    await $.send("File received and processed!");
+  }
+  return $.next;
+});
+```
+
+## File type validation
+
+Restrict uploads to specific file types:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const validExtensions = ["pdf", "txt", "docx", "xlsx"];
+    const { extension, name } = $.file;
+    
+    if (!validExtensions.includes(extension)) {
+      await $.send(
+        `Sorry, ${extension} files are not supported. ` +
+        `Valid types: ${validExtensions.join(", ")}`
+      );
+      return $.end;
+    }
+    
+    await $.send(`Processing ${name}...`);
+    // Continue with file processing
+  }
+  return $.next;
+});
+```
+
+## File size limits
+
+Enforce size restrictions:
+
+```typescript
+const MAX_SIZE_MB = 10;
+
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const { bytes, name } = $.file;
+    const sizeMB = bytes / (1024 * 1024);
+    
+    if (sizeMB > MAX_SIZE_MB) {
+      await $.send(
+        `Sorry, ${name} is ${sizeMB.toFixed(2)} MB. ` +
+        `Maximum size is ${MAX_SIZE_MB} MB.`
+      );
+      return $.end;
+    }
+    
+    // Process file
+  }
+  return $.next;
+});
+```
+
+## User authorization
+
+Restrict file uploads to approved users:
+
+```typescript
+const APPROVED_UPLOADERS = [
+  "admin@example.com",
+  "user@example.com"
+];
+
+Bot.addStep(async ($) => {
+  if ($.file) {
+    if (!APPROVED_UPLOADERS.includes($.author.email)) {
+      await $.send(
+        "Sorry, you are not authorized to upload files."
+      );
+      return $.end;
+    }
+    
+    // Process file for authorized users
+  }
+  return $.next;
+});
+```
+
+## Advanced example: Knowledge base uploads
+
+This example from the Voiceflow KB integration shows a complete file processing workflow:
+
+```typescript
+import { SpeedyBot, $Magic } from "speedybot";
+import { VFHelper } from "./voiceflow";
+
+const APPROVED_CONTRIBUTORS: string[] = [];
+const MAXIMUM_UPLOAD_SIZE_MB = 10;
+
+const Bot = new SpeedyBot<"VOICEFLOW_API_KEY">();
+
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const { name, extension } = $.file;
+    const rootMsg = await $.send(
+      `File upload in progress... ${name}`
+    );
+    
+    // Validate file type
+    const validTypes = ["pdf", "txt", "docx"];
+    if (!validTypes.includes(extension)) {
+      await $.send(
+        `Sorry, ${extension} files are not supported. ` +
+        `Valid types: ${validTypes.join(", ")}`
+      );
+      return $.end;
+    }
+    
+    // Check authorization
+    if (
+      APPROVED_CONTRIBUTORS.length > 0 &&
+      !APPROVED_CONTRIBUTORS.includes($.author.email)
+    ) {
+      await $.send(
+        "Sorry, you are not authorized to add documents"
+      );
+      return $.end;
+    }
+    
+    // Validate size and process
+    const vf_inst = new VFHelper(
+      Bot.getSecret("VOICEFLOW_API_KEY") as string
+    );
+    
+    try {
+      const SpeedyFile = await $.getFile($.file.url);
+      const { bytes, contentType, name } = SpeedyFile;
+      
+      const sizeMB = bytes / (1024 * 1024);
+      if (sizeMB > MAXIMUM_UPLOAD_SIZE_MB) {
+        await $.send(
+          `Sorry, ${name} is ${sizeMB.toFixed(2)} MB. ` +
+          `Maximum is ${MAXIMUM_UPLOAD_SIZE_MB} MB.`
+        );
+        return $.end;
+      }
+      
+      // Get file data and upload to knowledge base
+      const data = await SpeedyFile.getData();
+      await vf_inst.kbUploadDoc(name, data as Uint8Array);
+      
+      // Send confirmation
+      const card = $.card()
+        .addTitle(`🗃 ${name} was uploaded successfully!`)
+        .addTable([
+          ["Name", name],
+          ["Type", contentType],
+          ["Size", `${sizeMB.toFixed(2)} MB`]
+        ]);
+      
+      await $.send(card);
+    } catch (e) {
+      await $.send(`Error processing file: ${e.message}`);
+    } finally {
+      await $.edit(rootMsg, "File processed");
+    }
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+## Handling virus scans
+
+Webex scans files for viruses. Handle the 423 status code for files still being scanned:
+
+```typescript
+const RETRY_TOKEN = "__retry__file";
+
+Bot.addStep(async ($) => {
+  if ($.file) {
+    await processFile($);
+  }
+  return $.next;
+});
+
+// Handle retry button clicks
+Bot.addStep(async ($) => {
+  if ($.data && $.data[RETRY_TOKEN]) {
+    const { url } = $.data;
+    await processFile($, url as string);
+  }
+  return $.next;
+});
+
+async function processFile($: $Magic, fileUrl?: string) {
+  try {
+    const url = fileUrl || $.file!.url;
+    const SpeedyFile = await $.getFile(url);
+    const data = await SpeedyFile.getData();
+    
+    // Process the file data
+    await $.send("File processed successfully!");
+  } catch (e) {
+    // Check if still scanning
+    if (e?.statusCode === 423) {
+      const card = $.card()
+        .addTitle("File still scanning")
+        .addText("The file is being scanned for viruses")
+        .addButton("Try again", RETRY_TOKEN, {
+          data: { url: $.file!.url }
+        });
+      
+      await $.send(card);
+    } else {
+      await $.send(`Error: ${e.message}`);
+    }
+  }
+}
+```
+
+## Processing different file types
+
+### Text files
+
+```typescript
+if (extension === "txt") {
+  const data = await $.file.getData();
+  const text = new TextDecoder().decode(data);
+  
+  // Process text content
+  await $.send(`Your file contains ${text.length} characters`);
+}
+```
+
+### JSON files
+
+```typescript
+if (extension === "json") {
+  const data = await $.file.getData();
+  const text = new TextDecoder().decode(data);
+  const json = JSON.parse(text);
+  
+  // Process JSON data
+  await $.send(`Received JSON with ${Object.keys(json).length} keys`);
+}
+```
+
+### Binary files
+
+```typescript
+if (["pdf", "docx", "xlsx"].includes(extension)) {
+  const data = await $.file.getData(); // Uint8Array
+  
+  // Send to external service for processing
+  const result = await processDocument(data, contentType);
+  await $.send(`Extracted: ${result}`);
+}
+```
+
+### Images
+
+```typescript
+if (["jpg", "jpeg", "png", "gif"].includes(extension)) {
+  const data = await $.file.getData();
+  
+  // Send to vision API
+  const analysis = await analyzeImage(data);
+  await $.send(`Image contains: ${analysis.tags.join(", ")}`);
+}
+```
+
+## Integration patterns
+
+### Store in cloud storage
+
+```typescript
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+const s3 = new S3Client({ region: "us-east-1" });
+
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const data = await $.file.getData();
+    
+    await s3.send(new PutObjectCommand({
+      Bucket: "my-bucket",
+      Key: `uploads/${$.author.id}/${$.file.name}`,
+      Body: data,
+      ContentType: $.file.contentType
+    }));
+    
+    await $.send("File uploaded to storage!");
+  }
+  return $.next;
+});
+```
+
+### Send to external API
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const data = await $.file.getData();
+    
+    const formData = new FormData();
+    formData.append("file", new Blob([data]), $.file.name);
+    
+    const response = await fetch("https://api.example.com/process", {
+      method: "POST",
+      body: formData
+    });
+    
+    const result = await response.json();
+    await $.send(`Processing complete: ${result.status}`);
+  }
+  return $.next;
+});
+```
+
+### Process with LLM
+
+```typescript
+import { OpenAI } from "openai";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+Bot.addStep(async ($) => {
+  if ($.file && $.file.extension === "txt") {
+    const data = await $.file.getData();
+    const text = new TextDecoder().decode(data);
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: "Summarize this document." },
+        { role: "user", content: text }
+      ]
+    });
+    
+    await $.send(
+      `**Summary:**\n${completion.choices[0].message.content}`
+    );
+  }
+  return $.next;
+});
+```
+
+## Confirmation cards
+
+Send rich confirmation after processing:
+
+```typescript
+const card = $.card()
+  .addTitle("✅ File processed successfully")
+  .addSubtitle($.file.name)
+  .addTable([
+    ["Type", $.file.contentType],
+    ["Size", `${($.file.bytes / 1024).toFixed(2)} KB`],
+    ["Uploaded by", $.author.name],
+    ["Time", new Date().toLocaleString()]
+  ])
+  .addText("The file has been processed and stored.");
+
+await $.send(card);
+```
+
+## Error handling
+
+Robust error handling for file operations:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.file) {
+    try {
+      const data = await $.file.getData();
+      
+      // Process file
+      await processFile(data);
+      
+      await $.send("✅ File processed successfully");
+    } catch (e) {
+      console.error("File processing error:", e);
+      
+      if (e.statusCode === 423) {
+        await $.send("File is still being scanned. Try again in a moment.");
+      } else if (e.statusCode === 404) {
+        await $.send("File not found or expired.");
+      } else {
+        await $.send(
+          `Error processing file: ${e.message}\n` +
+          "Please try uploading again."
+        );
+      }
+    }
+  }
+  return $.next;
+});
+```
+
+## Best practices
+
+<Steps>
+
+<Step title="Validate early">
+Check file type, size, and permissions before downloading data.
+</Step>
+
+<Step title="Provide feedback">
+Send immediate confirmation that the file was received, then update with progress.
+</Step>
+
+<Step title="Handle failures gracefully">
+Account for virus scans (423), expired URLs (404), and processing errors.
+</Step>
+
+<Step title="Secure uploads">
+Restrict who can upload and what file types are accepted.
+</Step>
+
+<Step title="Clean up">
+Delete temporary files and handle data lifecycle appropriately.
+</Step>
+
+</Steps>
+
+<Warning>
+File URLs from Webex are temporary. Download and process files promptly, or store them in your own storage.
+</Warning>
+
+## Complete examples
+
+For full implementations, see:
+
+- **[Voiceflow KB example](https://github.com/valgaze/speedybot/tree/v2/examples/voiceflow-kb)** - Upload documents to knowledge base
+- **[Azure example](https://github.com/valgaze/speedybot/tree/v2/examples/azure)** - File processing with Azure storage
+- **[speedybot-gpt4](https://github.com/valgaze/speedybot-gpt4)** - Process documents (.doc, .xlsx) and inject into LLM prompts

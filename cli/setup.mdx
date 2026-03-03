@@ -1,0 +1,124 @@
+---
+title: speedybot setup
+description: Scaffold and configure new SpeedyBot projects with the setup command
+---
+
+The `setup` command downloads, scaffolds, and configures SpeedyBot projects. It can automatically install dependencies, configure environment variables, and boot up your development server.
+
+## Basic usage
+
+Run the setup command interactively:
+
+```bash
+npm init speedybot@latest setup
+```
+
+Or using npx:
+
+```bash
+npx -y speedybot@latest setup
+```
+
+## Flags
+
+<ParamField path="--project" type="string">
+  Specify which project template to scaffold. Available templates include:
+  - `default` - Basic SpeedyBot starter project
+  - `voiceflow-kb` - SpeedyBot with Voiceflow knowledge base integration
+  - Other templates available in the examples directory
+</ParamField>
+
+<ParamField path="--boot" type="boolean">
+  Automatically start the development server after setup completes.
+</ParamField>
+
+<ParamField path="--install" type="boolean">
+  Automatically install dependencies using npm after scaffolding the project.
+</ParamField>
+
+<ParamField path="-e, --env" type="string">
+  Specify environment variable keys to prompt for during setup. Can be used multiple times to configure multiple variables.
+</ParamField>
+
+<ParamField path="--help" type="boolean">
+  Display help information for the setup command.
+</ParamField>
+
+## Examples
+
+### Interactive setup
+
+Run setup without flags for an interactive experience:
+
+```bash
+npx -y speedybot@latest setup
+```
+
+### Quick start with default template
+
+Scaffold the default project, install dependencies, and boot the server:
+
+```bash
+npx -y speedybot@^2.0.0 setup --project default --boot --install
+```
+
+### Setup with environment variables
+
+Scaffold a Voiceflow project and prompt for required environment variables:
+
+```bash
+npx -y speedybot@^2.0.0 setup --project voiceflow-kb -e BOT_TOKEN -e VOICEFLOW_API_KEY --install --boot
+```
+
+This command will:
+1. Download the `voiceflow-kb` project template
+2. Prompt you to enter values for `BOT_TOKEN` and `VOICEFLOW_API_KEY`
+3. Install all project dependencies
+4. Start the development server
+
+### Setup without auto-install
+
+Scaffold a project but manually handle installation:
+
+```bash
+npx -y speedybot@latest setup --project default
+cd speedybot-project
+npm install
+npm run dev
+```
+
+## Project templates
+
+SpeedyBot offers several project templates optimized for different use cases:
+
+- **default** - Basic starter with core SpeedyBot features
+- **voiceflow-kb** - Integration with Voiceflow knowledge base and LLM capabilities
+- **standard-server** - Traditional Express.js server setup
+- **worker** - Cloudflare Workers deployment
+- **lambda** - AWS Lambda deployment
+- **azure** - Azure Functions deployment
+
+<Info>
+All project templates include websocket support for local development, so you don't need to configure webhooks initially.
+</Info>
+
+## After setup
+
+Once setup completes, you'll have a fully configured SpeedyBot project:
+
+1. **Configure your token** - Add your bot token to the `.env` file or use `npm run bot:setup <token>`
+2. **Start development** - Run `npm run bot:dev` to start with live reload
+3. **Customize your bot** - Edit the bot logic in `settings/bot.ts`
+
+<Note>
+The setup command uses the `create-speedybot` package under the hood, which is automatically downloaded when you run the CLI.
+</Note>
+
+## Getting help
+
+View detailed help for the setup command:
+
+```bash
+npm init speedybot@latest setup -- --help
+npx -y speedybot@latest setup --help
+```

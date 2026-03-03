@@ -1,0 +1,369 @@
+---
+title: User input
+description: Process text messages, file uploads, and card submissions
+---
+
+SpeedyBot provides a unified interface for handling all types of user input through the `$` parameter.
+
+## Understanding message types
+
+Every incoming event has a `messageType` that indicates what kind of input the user provided:
+
+```typescript
+Bot.addStep(async ($) => {
+  console.log($.messageType); // 'text', 'file', or 'card'
+  return $.next;
+});
+```
+
+## Processing text input
+
+Text messages are the most common type of user input.
+
+### Basic text handling
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.text) {
+    await $.send(`You said: ${$.text}`);
+  }
+  return $.next;
+});
+```
+
+### Pattern matching
+
+SpeedyBot provides convenient methods for matching text patterns:
+
+<Tabs>
+  <Tab title="Exact match">
+    ```typescript
+    Bot.exact('hello', async ($) => {
+      await $.send('Hi there!');
+      return $.end;
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Contains">
+    ```typescript
+    Bot.contains('help', async ($) => {
+      await $.send('How can I help you?');
+      return $.end;
+    });
+    
+    // Multiple keywords
+    Bot.contains(['hi', 'hey', 'hello'], async ($) => {
+      await $.send('Hello!');
+      return $.end;
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Regex">
+    ```typescript
+    Bot.regex(/^ping$/i, async ($) => {
+      await $.send('pong');
+      return $.end;
+    });
+    ```
+  </Tab>
+</Tabs>
+
+### Case-insensitive matching
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.text) {
+    const lowered = $.text.toLowerCase();
+    
+    if (lowered === 'ping') {
+      await $.send('pong');
+      return $.end;
+    }
+    
+    if (lowered === 'pong') {
+      await $.send('ping');
+      return $.end;
+    }
+  }
+  return $.next;
+});
+```
+
+## Processing file uploads
+
+When users upload files, the `$.file` object contains file metadata and access methods.
+
+```typescript ~/workspace/source/examples/speedybot-starter/settings/bot.ts
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const { name, extension, contentType } = $.file;
+    await $.send(
+      `You uploaded "${name}", a *.${extension} file [${contentType}]`
+    );
+    
+    // Fetch raw bytes
+    const fileData = await $.file.getData();
+    // Process or forward to external system
+  }
+  return $.next;
+});
+```
+
+<Info>
+See the [Handling files](/guides/handling-files) guide for comprehensive file handling patterns.
+</Info>
+
+## Handling card submissions
+
+When users submit adaptive cards, the form data is available in `$.data`.
+
+### Basic card submission
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.data) {
+    // Display submitted data
+    const dataSnippet = $.buildDataSnippet($.data);
+    await $.send('This data was submitted:');
+    await $.send(dataSnippet);
+  }
+  return $.next;
+});
+```
+
+### Typed card submissions
+
+Use TypeScript generics for type-safe card handling:
+
+```typescript
+type FeedbackForm = {
+  rating: string;
+  comments: string;
+  email: string;
+};
+
+Bot.addStep<FeedbackForm>(async ($) => {
+  if ($.data) {
+    const { rating, comments, email } = $.data;
+    
+    // TypeScript knows the types!
+    await $.send(`Rating: ${rating}`);
+    await $.send(`Comments: ${comments}`);
+    await $.send(`Email: ${email}`);
+  }
+  return $.next;
+});
+```
+
+### Conditional card handling
+
+```typescript
+type CardData = {
+  showCard?: boolean;
+  action?: string;
+  company_name?: string;
+};
+
+Bot.addStep<CardData>(async ($) => {
+  // Only process if NOT a card picker
+  if ($.data && !$.data.showCard) {
+    const dataSnippet = $.buildDataSnippet($.data);
+    await $.send('Data submitted:');
+    await $.send(dataSnippet);
+    return $.end;
+  }
+  return $.next;
+});
+
+// Handle specific card action
+Bot.addStep<CardData>(async ($) => {
+  if ($.data && $.data.action === 'confirm') {
+    await $.send('Action confirmed!');
+    return $.end;
+  }
+  return $.next;
+});
+```
+
+## Accessing author information
+
+Every input includes detailed information about the sender:
+
+```typescript
+Bot.addStep(async ($) => {
+  const { name, email, domain, id, org } = $.author;
+  
+  await $.send(`Hello ${name}!`);
+  console.log(`Message from: ${email}`);
+  console.log(`Organization: ${org}`);
+  console.log(`Domain: ${domain}`);
+  
+  return $.next;
+});
+```
+
+## Message context
+
+The `$.msg` object provides context about where the message was sent:
+
+```typescript
+Bot.addStep(async ($) => {
+  const { roomId, roomType, parentId, mentionedPeople } = $.msg;
+  
+  if (roomType === 'direct') {
+    await $.send('This is a 1:1 conversation');
+  } else {
+    await $.send('This is a group space');
+  }
+  
+  // Check if bot was mentioned
+  if (mentionedPeople.length > 0) {
+    await $.send('Thanks for mentioning me!');
+  }
+  
+  return $.next;
+});
+```
+
+## Handling mentions in groups
+
+<Note>
+In group spaces, `$.text` automatically strips the bot's @-mention, so you only get the actual message content.
+</Note>
+
+```typescript
+Bot.addStep(async ($) => {
+  // In a group space, if user types "@YourBot hello there"
+  // $.text will be "hello there" (mention stripped)
+  
+  if ($.msg.roomType === 'group') {
+    await $.send(`In a group, you said: ${$.text}`);
+  } else {
+    await $.send(`In DM, you said: ${$.text}`);
+  }
+  
+  return $.next;
+});
+```
+
+## Combining input types
+
+Handle multiple input types in the same step:
+
+```typescript ~/workspace/source/examples/speedybot-starter/settings/bot.ts
+Bot.addStep(async ($) => {
+  // Handle text
+  if ($.text) {
+    if ($.text.toLowerCase() === 'showcard') {
+      const card = $.card()
+        .addTitle('Capture data')
+        .addTextarea('Submit data')
+        .addPickerDropdown(['option 1', 'option 2', 'option 3', 'option 4']);
+      await $.send(card);
+    }
+  }
+  
+  // Handle file
+  if ($.file) {
+    const { name, extension, contentType } = $.file;
+    await $.send(
+      `You uploaded "${name}", a *.${extension} file [${contentType}]`
+    );
+  }
+  
+  // Handle card submission
+  if ($.data && !$.data.showCard) {
+    const dataSnippet = $.buildDataSnippet($.data);
+    await $.send('This data was submitted:');
+    await $.send(dataSnippet);
+  }
+  
+  return $.next;
+});
+```
+
+## Using debug information
+
+The `$.debug()` method provides a comprehensive snapshot:
+
+```typescript
+Bot.exact('debug', async ($) => {
+  const debugInfo = $.debug();
+  
+  await $.send($.buildDataSnippet(debugInfo));
+  
+  // Or send as file
+  await $.sendFile(debugInfo, 'json');
+  
+  return $.end;
+});
+```
+
+## Complete input handling example
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+type SurveyData = {
+  company_name: string;
+  rating: string;
+  comments: string;
+};
+
+// Text input - show survey
+Bot.exact('survey', async ($) => {
+  const card = $.card()
+    .addTitle('Quick Survey')
+    .addTextInput('Company name', 'company_name')
+    .addPickerDropdown(
+      ['Excellent', 'Good', 'Average', 'Poor'],
+      'rating'
+    )
+    .addTextarea('Additional comments', 'comments');
+  
+  await $.send(card);
+  return $.end;
+});
+
+// Card submission - process survey
+Bot.addStep<SurveyData>(async ($) => {
+  if ($.data) {
+    const { company_name, rating, comments } = $.data;
+    
+    await $.send(`Thank you ${$.author.name}!`);
+    await $.send(`Company: ${company_name}`);
+    await $.send(`Rating: ${rating}`);
+    await $.send(`Comments: ${comments}`);
+    
+    // Save to database, send notification, etc.
+    
+    return $.end;
+  }
+  return $.next;
+});
+
+// File upload - process document
+Bot.onCamera(async ($) => {
+  await $.send('Processing your image...');
+  
+  const imageData = await $.file.getData<ArrayBuffer>();
+  // Send to vision API
+  
+  await $.send('Analysis complete!');
+  return $.end;
+});
+
+// Default greeting
+Bot.addStep(async ($) => {
+  if ($.text) {
+    await $.send(`Hello ${$.author.name}! Try typing "survey" or uploading an image.`);
+  }
+  return $.next;
+});
+
+export default Bot;
+```

@@ -1,0 +1,95 @@
+---
+title: speedybot token
+description: Inspect and validate WebEx bot tokens using the token command
+---
+
+The `token` command inspects a WebEx bot token to verify its validity and display information about any associated agents.
+
+## Basic usage
+
+```bash
+npm init speedybot@latest token
+```
+
+Or using npx:
+
+```bash
+npx -y speedybot@latest token
+```
+
+## What it does
+
+The token command:
+
+- Validates that your token is properly formatted
+- Checks if the token is still active and valid
+- Displays information about the bot associated with the token
+- Shows any agents or integrations connected to the token
+
+<Info>
+This command is useful for debugging authentication issues or verifying that your bot token is configured correctly.
+</Info>
+
+## When to use it
+
+Use the `token` command when you need to:
+
+- Verify a bot token before deploying
+- Debug authentication errors
+- Check which bot a token belongs to
+- Confirm token permissions and scopes
+- Troubleshoot webhook or API issues
+
+## Token security
+
+<Warning>
+Never share your bot token publicly or commit it to version control. Tokens provide full access to your bot and should be treated as secrets.
+</Warning>
+
+Best practices for token management:
+
+- Store tokens in `.env` files that are gitignored
+- Use environment variables in production
+- Rotate tokens regularly
+- Use separate tokens for development and production
+- Revoke tokens immediately if they're compromised
+
+## Getting a bot token
+
+If you need to create a new bot and get a token:
+
+1. Go to [https://developer.webex.com/my-apps/new/bot](https://developer.webex.com/my-apps/new/bot)
+2. Fill in your bot's details (name, username, description, icon)
+3. Click "Add Bot"
+4. Copy the bot access token immediately (you won't be able to see it again)
+5. Store the token securely in your `.env` file
+
+<Note>
+Bot tokens don't expire, but they can be revoked. If you lose your token, you'll need to regenerate it from the developer portal.
+</Note>
+
+## Common issues
+
+### Invalid token format
+
+If the token command reports an invalid format, check that:
+- You copied the entire token (tokens are long strings)
+- There are no extra spaces or newlines
+- You're using a bot token, not a personal access token
+
+### Token not working after validation
+
+Even if a token validates successfully, you may still encounter issues if:
+- The bot has been deleted from the developer portal
+- Your WebEx organization has applied restrictions
+- Rate limits have been exceeded
+- The bot has been blocked by administrators
+
+## Getting help
+
+View detailed help for the token command:
+
+```bash
+npm init speedybot@latest token -- --help
+npx -y speedybot@latest token --help
+```

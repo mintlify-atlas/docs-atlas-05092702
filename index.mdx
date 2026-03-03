@@ -1,97 +1,127 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Introduction
+description: Build powerful WebEx conversation bots with TypeScript in seconds
 ---
 
-## Setting up
+# SpeedyBot
 
-Get your documentation site up and running in minutes.
+SpeedyBot helps you efficiently design, deploy, and secure rich conversation systems for WebEx. Go from zero to a working bot in seconds with a buttery-smooth developer experience.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get your first bot running in under 5 minutes
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Installation" icon="download" href="/installation">
+    Install SpeedyBot with your preferred package manager
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="SpeedyCards" icon="square" href="/speedycards/overview">
+    Build rich, interactive adaptive cards with ease
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Examples" icon="code" href="/examples/overview">
+    Explore real-world bot implementations
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why SpeedyBot?
 
-Everything you need to create world-class documentation.
+SpeedyBot offers a complete solution for building WebEx bots with TypeScript:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+### Zero dependencies
 
-## Need inspiration?
+No external dependencies means a smaller footprint and fewer security concerns. SpeedyBot is self-contained and ready to use.
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+### Works everywhere
+
+SpeedyBot seamlessly operates across diverse serverless and container-less platforms:
+
+- AWS Lambda
+- Cloudflare Workers
+- Deno Deploy
+- Azure Functions
+- Traditional Node.js servers
+- CI/CD pipelines
+
+As long as you have internet connectivity, SpeedyBot functions seamlessly.
+
+### Developer experience first
+
+Built in TypeScript with complete type hints and autocomplete support. Features include:
+
+- Full ESM and CommonJS support
+- Live-reload on code changes during development
+- Interactive documentation
+- Rich IDE support with autocomplete
+
+### Powerful abstractions
+
+SpeedyBot shrinks away complexity and makes it a breeze to handle user input regardless of the source:
+
+- Text messages
+- File uploads
+- Form submissions from SpeedyCards
+- Card interactions and buttons
+
+## Step-based architecture
+
+SpeedyBot processes events through a sequence of steps, similar to middleware in Express. Each step can:
+
+- Send messages or SpeedyCards to users
+- Call external APIs
+- Process file uploads
+- Manage conversation state
+- Return `$.next` to continue or `$.end` to stop
+
+```ts
+import { SpeedyBot } from "speedybot";
+
+const Bot = new SpeedyBot();
+
+Bot.addStep(async ($) => {
+  if ($.text === "hi") {
+    await $.reply(`Hi there ${$.author.name}!`);
+  }
+  return $.next;
+});
+```
+
+## Built-in utilities
+
+The `$` parameter provides powerful utilities:
+
+- `$.send()` - Send messages and cards
+- `$.reply()` - Reply to specific messages
+- `$.card()` - Create SpeedyCards
+- `$.sendFile()` - Send files to users
+- `$.thread()` - Create message threads
+- `$.author` - Access user information
+- `$.file` - Handle file uploads
+- `$.data` - Access form submissions
+
+## SpeedyCards
+
+SpeedyCards make it easy to build Adaptive Cards with visual embellishments and interactive forms:
+
+```ts
+const card = $.card()
+  .addTitle("Welcome!")
+  .addText("Choose an option below")
+  .addChips(["Option 1", "Option 2", "Option 3"])
+  .addTable([
+    ["Feature", "Status"],
+    ["Zero dependencies", "✅"],
+    ["TypeScript", "✅"],
+  ]);
+
+await $.send(card);
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build your first bot in minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Set up your development environment
+  </Card>
+</CardGroup>

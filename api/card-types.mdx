@@ -1,0 +1,475 @@
+---
+title: Card types
+description: Types for Adaptive Card creation
+---
+
+Type definitions for building Adaptive Cards with SpeedyCard.
+
+## Card definition types
+
+### Card
+
+Raw Adaptive Card JSON specification.
+
+```typescript
+type Card = {
+  type: string;            // "AdaptiveCard"
+  body: unknown[];         // Array of card elements
+  actions?: any[];         // Array of actions (buttons, etc.)
+  $schema: string;         // Adaptive Card schema URL
+  version: string;         // Card version (e.g., "1.0")
+}
+```
+
+**Usage:**
+
+```typescript
+const rawCard: Card = {
+  type: 'AdaptiveCard',
+  version: '1.0',
+  $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+  body: [
+    {
+      type: 'TextBlock',
+      text: 'Hello!'
+    }
+  ]
+};
+
+await Bot.sendTo(roomId, rawCard);
+```
+
+### AbbreviatedSpeedyCard
+
+Quick configuration object for creating cards.
+
+```typescript
+type AbbreviatedSpeedyCard = {
+  title: string;                                        // Card title
+  subTitle: string;                                     // Subtitle
+  image: string;                                        // Image URL
+  url: string;                                          // Link URL
+  urlLabel: string;                                     // Link text
+  data: AttachedData;                                   // Attached data
+  chips: (string | { title: string; value?: string })[]; // Quick action chips
+  table: string[][] | { [key: string]: string };        // Key-value table
+  choices: (string | number)[];                         // Dropdown choices
+  backgroundImage: string;                              // Background image URL
+}
+```
+
+**Usage:**
+
+```typescript
+const card = Bot.card({
+  title: 'Welcome',
+  subTitle: 'Get started with SpeedyBot',
+  image: 'https://example.com/logo.png',
+  chips: ['help', 'docs', 'support'],
+  table: {
+    'Version': '2.0.0',
+    'Status': 'Active'
+  }
+});
+
+await Bot.sendTo(roomId, card);
+```
+
+## Survey types
+
+### SurveyQuestion
+
+Configuration for a survey question.
+
+```typescript
+type SurveyQuestion = {
+  type: SurveyQuestionType;        // Question type
+  question: string;                // Question text
+  choices?: (string | number)[];   // Choices (for select types)
+  id?: string;                     // Custom field ID
+}
+```
+
+### SurveyQuestionType
+
+Available survey question types.
+
+```typescript
+type SurveyQuestionType =
+  | "text"              // Single-line text input
+  | "single-select"    // Radio buttons
+  | "multi-select"     // Checkboxes
+  | "picker-dropdown"  // Dropdown menu
+  | "picker-date"      // Date picker
+  | "picker-time"      // Time picker
+  | "textarea"         // Multi-line text input
+```
+
+**Usage:**
+
+```typescript
+const surveyQuestions: SurveyQuestion[] = [
+  {
+    type: 'text',
+    question: 'What is your name?',
+    id: 'name'
+  },
+  {
+    type: 'single-select',
+    question: 'How would you rate our service?',
+    choices: ['Excellent', 'Good', 'Fair', 'Poor'],
+    id: 'rating'
+  },
+  {
+    type: 'picker-date',
+    question: 'When did you first use our product?',
+    id: 'firstUseDate'
+  },
+  {
+    type: 'textarea',
+    question: 'Any additional feedback?',
+    id: 'feedback'
+  }
+];
+
+const survey = new SpeedyCard().survey(surveyQuestions, 'Customer Survey');
+await Bot.sendTo(roomId, survey);
+```
+
+## Element types
+
+### TextBlock
+
+Text element configuration.
+
+```typescript
+interface TextBlock extends BaseOpts {
+  type: "TextBlock";
+  text: string;
+  color?: ColorChoices;
+  fontType?: string;
+  isSubtle?: boolean;
+  weight: "Lighter" | "Default" | "Bolder";
+  wrap?: boolean;
+}
+```
+
+### ImageBlock
+
+Image element configuration.
+
+```typescript
+interface ImageBlock extends BaseOpts {
+  type: "Image";
+  url: string;
+  selectAction?: {
+    type: string;
+    style?: string;
+    isPrimary?: boolean;
+    url: string;
+  };
+}
+```
+
+### FactSet
+
+Table element configuration.
+
+```typescript
+interface FactSet {
+  type: "FactSet";
+  facts: Fact[];
+}
+
+interface Fact {
+  title: string;    // Label
+  value: string;    // Value
+}
+```
+
+### ChoiceBlock
+
+Choice input configuration.
+
+```typescript
+interface ChoiceBlock {
+  type?: string;              // "Input.ChoiceSet"
+  id?: string;                // Field ID
+  value?: string;             // Default value
+  isMultiSelect?: boolean;    // Allow multiple selections
+  isVisible?: boolean;        // Visibility
+  choices?: ChoiceOption[];   // Available choices
+}
+
+interface ChoiceOption {
+  title: string;              // Display text
+  value: string | number;     // Value when selected
+}
+```
+
+### LinkButton
+
+Link button configuration.
+
+```typescript
+interface LinkButton {
+  type: "Action.OpenUrl";
+  title: string;                        // Button text
+  url: string;                          // Target URL
+  style?: "positive" | "destructive";  // Button style
+}
+```
+
+## Style types
+
+### SizeChoices
+
+Size options for text and images.
+
+```typescript
+type SizeChoices =
+  | "Small"
+  | "Default"
+  | "Medium"
+  | "Large"
+  | "ExtraLarge"
+  | "Stretch"
+```
+
+**Usage:**
+
+```typescript
+card.addText('Large text', { size: 'Large' });
+card.addImage('url', { size: 'Medium' });
+```
+
+### AlignmentChoices
+
+Horizontal alignment options.
+
+```typescript
+type AlignmentChoices = "Left" | "Center" | "Right"
+```
+
+### VAlignChoices
+
+Vertical alignment options.
+
+```typescript
+type VAlignChoices = "Bottom" | "Center" | "Top"
+```
+
+### ColorChoices
+
+Color options for text and backgrounds.
+
+```typescript
+type ColorChoices =
+  | "Default"      // Default theme color
+  | "Dark"         // Dark gray
+  | "Light"        // Light gray
+  | "Accent"       // Blue
+  | "Good"         // Green
+  | "Warning"      // Yellow/Orange
+  | "Attention"    // Red
+  | "blue"         // Alias for Accent
+  | "red"          // Alias for Attention
+  | "green"        // Alias for Good
+  | "yellow"       // Alias for Warning
+```
+
+**Usage:**
+
+```typescript
+card.addText('Success!', { color: 'Good' });
+card.addText('Error!', { color: 'Attention', backgroundColor: 'Light' });
+card.addBlock(innerCard, { backgroundColor: 'Accent' });
+```
+
+### BaseColors
+
+Core color values.
+
+```typescript
+type BaseColors =
+  | "Default"
+  | "Dark"
+  | "Light"
+  | "Accent"
+  | "Good"
+  | "Warning"
+  | "Attention"
+```
+
+## Header configuration
+
+### HeaderConfig
+
+Configuration for card headers.
+
+```typescript
+type HeaderConfig = {
+  iconURL?: string;                   // Icon URL or emoji
+  backgroundColor?: ColorChoices;     // Header background
+  rtl?: boolean;                      // Right-to-left layout
+  iconAlignment?: AlignmentChoices;   // Icon position
+  iconWidth?: number;                 // Icon width in pixels
+  iconRound?: boolean;                // Make icon circular
+  textSize?: SizeChoices;            // Text size
+  textAlign?: AlignmentChoices;       // Text alignment
+  textColor?: ColorChoices;          // Text color
+}
+```
+
+**Usage:**
+
+```typescript
+card.addHeader('Dashboard', {
+  iconURL: '📊',
+  backgroundColor: 'Accent',
+  textSize: 'Large',
+  iconRound: true
+});
+```
+
+## Input configuration
+
+### inputConfig
+
+Configuration for text inputs.
+
+```typescript
+interface inputConfig {
+  id?: string;              // Field ID
+  placeholder?: string;     // Placeholder text
+  isMultiline?: boolean;    // Multi-line textarea
+}
+```
+
+## Base types
+
+### BaseConfig
+
+Base configuration for card elements.
+
+```typescript
+interface BaseConfig {
+  title?: string;
+  titleConfig?: Partial<TextBlock>;
+  choices?: string[];
+  buttons?: string[];
+}
+```
+
+### BaseOpts
+
+Base options for elements.
+
+```typescript
+interface BaseOpts {
+  horizontalAlignment?: AlignmentChoices;
+  size?: SizeChoices;
+}
+```
+
+## Complete example
+
+```typescript
+type TicketForm = {
+  title: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  dueDate: string;
+  assignee: string;
+};
+
+const card = new SpeedyCard()
+  .addHeader('Create Ticket', {
+    iconURL: '🎫',
+    backgroundColor: 'Accent'
+  })
+  .addText('Fill out the form below', {
+    size: 'Medium',
+    color: 'Default'
+  })
+  .addTextInput('Ticket title', 'title')
+  .addTextarea('Description', 'description')
+  .addSingleSelect(
+    [
+      { title: 'High Priority', value: 'high' },
+      { title: 'Medium Priority', value: 'medium' },
+      { title: 'Low Priority', value: 'low' }
+    ],
+    'priority'
+  )
+  .addPickerDate('Due date', 'dueDate')
+  .addTextInput('Assignee email', 'assignee')
+  .setSubmitButtonTitle('Create')
+  .attachData({ action: 'create_ticket' });
+
+await Bot.sendTo(roomId, card);
+
+// Handle submission
+Bot.addStep<TicketForm>(async ($) => {
+  if ($.data?.action === 'create_ticket') {
+    const { title, description, priority, dueDate, assignee } = $.data;
+    // Type-safe access to form data
+    await $.send(`Ticket "${title}" created with ${priority} priority`);
+  }
+  return $.next;
+});
+```
+
+## Survey example
+
+```typescript
+const feedbackSurvey: SurveyQuestion[] = [
+  {
+    type: 'text',
+    question: 'What is your name?',
+    id: 'name'
+  },
+  {
+    type: 'single-select',
+    question: 'How would you rate your experience?',
+    choices: ['Excellent', 'Good', 'Average', 'Poor'],
+    id: 'rating'
+  },
+  {
+    type: 'multi-select',
+    question: 'Which features did you use?',
+    choices: ['Chat', 'Video calls', 'Screen sharing', 'File sharing'],
+    id: 'features'
+  },
+  {
+    type: 'picker-date',
+    question: 'When did you first use the product?',
+    id: 'startDate'
+  },
+  {
+    type: 'textarea',
+    question: 'Any suggestions for improvement?',
+    id: 'suggestions'
+  }
+];
+
+const survey = new SpeedyCard().survey(feedbackSurvey, 'Product Feedback');
+await Bot.sendTo(roomId, survey);
+
+// Handle survey submission
+type FeedbackData = {
+  name: string;
+  rating: string;
+  features: string;
+  startDate: string;
+  suggestions: string;
+};
+
+Bot.addStep<FeedbackData>(async ($) => {
+  if ($.data) {
+    const { name, rating, features, suggestions } = $.data;
+    await $.send(`Thanks for your feedback, ${name}!`);
+  }
+  return $.next;
+});
+```

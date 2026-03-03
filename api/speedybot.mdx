@@ -1,0 +1,785 @@
+---
+title: SpeedyBot class
+description: Core SpeedyBot class for building chatbots
+---
+
+The `SpeedyBot` class is the main interface for building and managing your bot. It handles webhooks, middleware, and all interactions with the Webex API.
+
+## Constructor
+
+```typescript
+const Bot = new SpeedyBot(token?: string, makeRequest?: CoreMakerequest)
+```
+
+<ParamField path="token" type="string" optional>
+  Bot access token. Can also be set later with `setToken()`
+</ParamField>
+
+<ParamField path="makeRequest" type="CoreMakerequest" optional>
+  Custom request handler for testing or proxying
+</ParamField>
+
+## Configuration methods
+
+### setToken
+
+Sets the bot token for API authentication.
+
+```typescript
+Bot.setToken(token: string): SpeedyBot
+```
+
+<ParamField path="token" type="string" required>
+  Your bot access token from the Webex developer portal
+</ParamField>
+
+**Returns:** The SpeedyBot instance for chaining
+
+### getToken
+
+Retrieves the current bot token.
+
+```typescript
+Bot.getToken(): string
+```
+
+**Returns:** The configured bot token
+
+### setFallbackText
+
+Sets fallback text for Adaptive Cards when the client doesn't support them.
+
+```typescript
+Bot.setFallbackText(text: string): void
+```
+
+<ParamField path="text" type="string" required>
+  Fallback message text
+</ParamField>
+
+## Secret management
+
+### addSecret
+
+Adds a single secret to the bot instance.
+
+```typescript
+Bot.addSecret(key: string, value: string | number): void
+```
+
+<ParamField path="key" type="string" required>
+  Secret identifier
+</ParamField>
+
+<ParamField path="value" type="string | number" required>
+  Secret value
+</ParamField>
+
+### addSecrets
+
+Adds multiple secrets at once.
+
+```typescript
+Bot.addSecrets(payload: { [key: string]: string | number }): void
+```
+
+<ParamField path="payload" type="object" required>
+  Object containing key-value pairs of secrets
+</ParamField>
+
+### getSecret
+
+Retrieves a secret by key.
+
+```typescript
+Bot.getSecret(key: string): string | number | undefined
+```
+
+<ParamField path="key" type="string" required>
+  Secret identifier
+</ParamField>
+
+**Returns:** The secret value or `undefined` if not found
+
+## Middleware registration
+
+### addStep
+
+Adds a middleware handler to the processing chain.
+
+```typescript
+Bot.addStep<T = AttachedData>(middleware: Middleware<T>): void
+```
+
+<ParamField path="middleware" type="Middleware<T>" required>
+  Handler function that receives the `$` parameter
+</ParamField>
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  await $.send('Hello!');
+  return $.next;
+});
+```
+
+### addStepSequence
+
+Adds multiple middleware handlers at once.
+
+```typescript
+Bot.addStepSequence<T = AttachedData>(middlewares: Middleware<T>[]): void
+```
+
+<ParamField path="middlewares" type="Middleware<T>[]" required>
+  Array of middleware functions
+</ParamField>
+
+### insertStepToFront
+
+Inserts middleware at the beginning of the chain.
+
+```typescript
+Bot.insertStepToFront(middleware: Middleware): void
+```
+
+<ParamField path="middleware" type="Middleware" required>
+  Handler to insert at the front
+</ParamField>
+
+## Conditional handlers
+
+### contains
+
+Matches if the message contains specified keyword(s).
+
+```typescript
+Bot.contains(keyword: string | string[], cb: Middleware): void
+```
+
+<ParamField path="keyword" type="string | string[]" required>
+  Keyword or array of keywords to match (case-insensitive)
+</ParamField>
+
+<ParamField path="cb" type="Middleware" required>
+  Handler to execute on match
+</ParamField>
+
+### exact
+
+Matches if the message exactly equals the keyword.
+
+```typescript
+Bot.exact(keyword: string, cb: Middleware): void
+```
+
+<ParamField path="keyword" type="string" required>
+  Exact string to match (case-sensitive)
+</ParamField>
+
+<ParamField path="cb" type="Middleware" required>
+  Handler to execute on match
+</ParamField>
+
+### regex
+
+Matches messages against a regular expression.
+
+```typescript
+Bot.regex(pattern: RegExp, cb: Middleware): void
+```
+
+<ParamField path="pattern" type="RegExp" required>
+  Regular expression pattern
+</ParamField>
+
+<ParamField path="cb" type="Middleware" required>
+  Handler to execute on match
+</ParamField>
+
+### onCamera
+
+Handles image file uploads.
+
+```typescript
+Bot.onCamera(cb: Middleware, formats?: string[]): void
+```
+
+<ParamField path="cb" type="Middleware" required>
+  Handler to execute when image is received
+</ParamField>
+
+<ParamField path="formats" type="string[]" optional>
+  Additional image formats beyond jpg, jpeg, png
+</ParamField>
+
+## Message sending
+
+### sendTo
+
+Sends a message to a room, email, or person.
+
+```typescript
+Bot.sendTo(
+  emailOrRoomId: string | { personId: string },
+  message: Message
+): Promise<MessageResponse>
+```
+
+<ParamField path="emailOrRoomId" type="string | { personId: string }" required>
+  Target email, room ID, or person ID object
+</ParamField>
+
+<ParamField path="message" type="Message" required>
+  String, number, Card, or SpeedyCard to send
+</ParamField>
+
+**Returns:** Promise resolving to message details
+
+**Example:**
+
+```typescript
+await Bot.sendTo('user@example.com', '**Hello!**');
+await Bot.sendTo('room-id', Bot.card().addTitle('Card'));
+```
+
+### send (internal)
+
+Internal method for sending messages.
+
+```typescript
+Bot._send(payload: ToMessage): Promise<MessageResponse>
+```
+
+### replyTo
+
+Replies to a message in a thread.
+
+```typescript
+Bot.replyTo(
+  roomId: string,
+  messageId: string,
+  message: string
+): Promise<MessageResponse>
+
+Bot.replyTo(
+  messageObj: MessageResponse,
+  message: string
+): Promise<MessageResponse>
+```
+
+<ParamField path="roomId" type="string" required>
+  Room identifier
+</ParamField>
+
+<ParamField path="messageId" type="string" required>
+  Parent message ID
+</ParamField>
+
+<ParamField path="messageObj" type="MessageResponse" optional>
+  Message object containing roomId and id
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  Reply text
+</ParamField>
+
+**Returns:** Promise resolving to reply message details
+
+### editMessage
+
+Edits an existing message.
+
+```typescript
+Bot.editMessage(
+  roomId: string,
+  messageId: string,
+  message: string
+): Promise<MessageResponse>
+```
+
+<ParamField path="roomId" type="string" required>
+  Room identifier
+</ParamField>
+
+<ParamField path="messageId" type="string" required>
+  Message to edit
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  New message text (markdown)
+</ParamField>
+
+**Returns:** Promise resolving to edited message details
+
+### deleteMessage
+
+Deletes a message.
+
+```typescript
+Bot.deleteMessage(messageId: string): Promise<Response>
+```
+
+<ParamField path="messageId" type="string" required>
+  Message to delete
+</ParamField>
+
+**Returns:** Promise resolving to API response
+
+## File operations
+
+### sendFileTo
+
+Sends data as a downloadable file.
+
+```typescript
+Bot.sendFileTo(
+  destination: string | { personId: string },
+  data: any,
+  extensionOrFileName: string,
+  textLabel?: string,
+  contentType?: string | null
+): Promise<MessageResponse>
+```
+
+<ParamField path="destination" type="string | { personId: string }" required>
+  Email, room ID, or person ID
+</ParamField>
+
+<ParamField path="data" type="any" required>
+  File data (will be stringified if JSON)
+</ParamField>
+
+<ParamField path="extensionOrFileName" type="string" required>
+  File extension ("json") or full name ("data.json")
+</ParamField>
+
+<ParamField path="textLabel" type="string" optional>
+  Message text accompanying the file
+</ParamField>
+
+<ParamField path="contentType" type="string | null" optional>
+  MIME type (auto-detected if not provided)
+</ParamField>
+
+### getFile
+
+Retrieves file data from a URL.
+
+```typescript
+Bot.getFile(
+  url: string,
+  opts?: { responseType?: "arraybuffer" | "json" }
+): Promise<SpeedyFile & { data: unknown }>
+```
+
+<ParamField path="url" type="string" required>
+  File URL from webhook
+</ParamField>
+
+<ParamField path="opts" type="object" optional>
+  Response type options
+</ParamField>
+
+**Returns:** Promise resolving to file metadata and data
+
+### peekFile
+
+Retrieves file metadata without downloading content.
+
+```typescript
+Bot.peekFile(url: string): Promise<Omit<SpeedyFile, "data">>
+```
+
+<ParamField path="url" type="string" required>
+  File URL
+</ParamField>
+
+**Returns:** Promise resolving to file metadata
+
+## Card creation
+
+### card
+
+Creates a new SpeedyCard instance.
+
+```typescript
+Bot.card(config?: Partial<AbbreviatedSpeedyCard & { label: string }>): SpeedyCard
+```
+
+<ParamField path="config" type="AbbreviatedSpeedyCard" optional>
+  Quick configuration object
+</ParamField>
+
+**Returns:** New SpeedyCard instance
+
+**Example:**
+
+```typescript
+const card = Bot.card({
+  title: 'Welcome',
+  subTitle: 'Getting started',
+  chips: ['help', 'docs'],
+  image: 'https://example.com/logo.png'
+});
+```
+
+### stashCard
+
+Creates a card with hidden content that can be revealed.
+
+```typescript
+Bot.stashCard(
+  secret: string | number,
+  message?: string,
+  unwrapLabel?: string,
+  destroyLabel?: string
+): SpeedyCard
+```
+
+<ParamField path="secret" type="string | number" required>
+  Hidden content
+</ParamField>
+
+<ParamField path="message" type="string" optional>
+  Card title (default: "Info")
+</ParamField>
+
+<ParamField path="unwrapLabel" type="string" optional>
+  Button label for revealing
+</ParamField>
+
+<ParamField path="destroyLabel" type="string" optional>
+  Button label for deletion
+</ParamField>
+
+### errorCard
+
+Creates a styled error card.
+
+```typescript
+Bot.errorCard(title: string, message: string): SpeedyCard
+```
+
+<ParamField path="title" type="string" required>
+  Error title
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  Error description
+</ParamField>
+
+### successCard
+
+Creates a styled success card.
+
+```typescript
+Bot.successCard(title: string, message: string): SpeedyCard
+```
+
+<ParamField path="title" type="string" required>
+  Success title
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  Success description
+</ParamField>
+
+### appCard
+
+Creates a card with app branding header.
+
+```typescript
+Bot.appCard(
+  appName: string,
+  logoUrl: string,
+  config?: Omit<HeaderConfig, "iconURL">
+): SpeedyCard
+```
+
+<ParamField path="appName" type="string" required>
+  Application name
+</ParamField>
+
+<ParamField path="logoUrl" type="string" required>
+  Logo URL
+</ParamField>
+
+<ParamField path="config" type="HeaderConfig" optional>
+  Additional header configuration
+</ParamField>
+
+## Webhook management
+
+### Setup
+
+Creates both firehose and attachmentActions webhooks.
+
+```typescript
+Bot.Setup(url: string, secret: string): Promise<[Webhook, Webhook]>
+```
+
+<ParamField path="url" type="string" required>
+  Webhook target URL
+</ParamField>
+
+<ParamField path="secret" type="string" required>
+  Webhook secret for validation
+</ParamField>
+
+### getWebhooks
+
+Retrieves all registered webhooks.
+
+```typescript
+Bot.getWebhooks(): Promise<{ items: Webhook[] }>
+```
+
+**Returns:** Promise resolving to webhook list
+
+### fetchWebhooks
+
+Retrieves abbreviated webhook data.
+
+```typescript
+Bot.fetchWebhooks(): Promise<{
+  id: string;
+  name: string;
+  resource: string;
+  targetUrl: string;
+}[]>
+```
+
+### createWebhook
+
+Creates a custom webhook.
+
+```typescript
+Bot.createWebhook(payload: {
+  resource: string;
+  event: string;
+  targetUrl: string;
+  name: string;
+  secret?: string;
+}): Promise<Webhook>
+```
+
+### deleteWebhook
+
+Deletes a webhook by ID.
+
+```typescript
+Bot.deleteWebhook(webhookId: string): Promise<void>
+```
+
+<ParamField path="webhookId" type="string" required>
+  Webhook identifier
+</ParamField>
+
+## Room operations
+
+### getRoom
+
+Retrieves room details.
+
+```typescript
+Bot.getRoom(roomId: string): Promise<Room_Details>
+```
+
+<ParamField path="roomId" type="string" required>
+  Room identifier
+</ParamField>
+
+### getRecentRooms
+
+Retrieves list of recent rooms.
+
+```typescript
+Bot.getRecentRooms(limit?: number): Promise<{
+  type: string;
+  title: string;
+  id: string;
+}[]>
+```
+
+<ParamField path="limit" type="number" optional>
+  Maximum number of rooms (default: 100)
+</ParamField>
+
+### getAllRooms
+
+Retrieves all rooms with filtering options.
+
+```typescript
+Bot.getAllRooms(options?: Partial<RoomConfig>): Promise<Room_Details[]>
+```
+
+<ParamField path="options" type="RoomConfig" optional>
+  Filter and sort options
+</ParamField>
+
+## User operations
+
+### getSelf
+
+Retrieves bot's own user details.
+
+```typescript
+Bot.getSelf(token?: string): Promise<SelfData>
+```
+
+<ParamField path="token" type="string" optional>
+  Token to validate (defaults to bot's token)
+</ParamField>
+
+### whoAmI
+
+Retrieves bot details including webhooks.
+
+```typescript
+Bot.whoAmI(): Promise<SelfData & { webhooks: Webhook[] }>
+```
+
+### getPerson
+
+Retrieves details for a specific person.
+
+```typescript
+Bot.getPerson(personId: string): Promise<SelfData>
+```
+
+<ParamField path="personId" type="string" required>
+  Person identifier
+</ParamField>
+
+### validateToken
+
+Validates if a token is valid.
+
+```typescript
+Bot.validateToken(token: string): Promise<boolean>
+```
+
+<ParamField path="token" type="string" required>
+  Token to validate
+</ParamField>
+
+## Webhook processing
+
+### runMiddleware
+
+Processes incoming webhooks through middleware chain.
+
+```typescript
+Bot.runMiddleware(
+  envelope: ENVELOPES,
+  startingCtx?: { [key: string]: string | number }
+): Promise<boolean>
+```
+
+<ParamField path="envelope" type="ENVELOPES" required>
+  Webhook payload from Webex
+</ParamField>
+
+<ParamField path="startingCtx" type="object" optional>
+  Initial context data
+</ParamField>
+
+**Returns:** Promise resolving to true if processed successfully
+
+## Error handling
+
+### captureError
+
+Registers a global error handler.
+
+```typescript
+Bot.captureError(handler: (error: SpeedyError) => void | unknown): void
+```
+
+<ParamField path="handler" type="function" required>
+  Error handling function
+</ParamField>
+
+**Example:**
+
+```typescript
+Bot.captureError((error) => {
+  console.error('Bot error:', error.message);
+  if (error.roomId) {
+    Bot.sendTo(error.roomId, 'An error occurred');
+  }
+});
+```
+
+## Utility methods
+
+### pickRandom
+
+Picks a random item from array or generates random number.
+
+```typescript
+Bot.pickRandom<T>(list: T[]): T
+Bot.pickRandom(min: number, max: number): number
+```
+
+<ParamField path="list" type="T[]" optional>
+  Array to pick from
+</ParamField>
+
+<ParamField path="min" type="number" optional>
+  Minimum number (inclusive)
+</ParamField>
+
+<ParamField path="max" type="number" optional>
+  Maximum number (inclusive)
+</ParamField>
+
+### rando
+
+Generates a random 11-character string.
+
+```typescript
+Bot.rando(): string
+```
+
+**Returns:** Random alphanumeric string
+
+### fuzzyMatch
+
+Checks if a candidate string matches any option.
+
+```typescript
+Bot.fuzzyMatch(candidate: string, options: string[]): boolean
+```
+
+<ParamField path="candidate" type="string" required>
+  String to check
+</ParamField>
+
+<ParamField path="options" type="string[]" required>
+  Possible matches
+</ParamField>
+
+### convertToHash
+
+Converts array of key=value pairs to object.
+
+```typescript
+Bot.convertToHash(arr: string[]): { [key: string]: string }
+```
+
+<ParamField path="arr" type="string[]" required>
+  Array of "key=value" strings
+</ParamField>
+
+**Example:**
+
+```typescript
+const secrets = Bot.convertToHash([
+  'API_KEY=abc123',
+  'SECRET=xyz789'
+]);
+// { API_KEY: 'abc123', SECRET: 'xyz789' }
+```

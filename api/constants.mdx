@@ -1,0 +1,407 @@
+---
+title: Constants
+description: Constants exported from SpeedyBot
+---
+
+Constant values used throughout SpeedyBot.
+
+## CONSTANTS object
+
+Core constants for SpeedyBot functionality.
+
+```typescript
+export const CONSTANTS = {
+  submitToken: "_private_speedybot_",
+  CHIP_LABEL: "speedybot_CHIP_CLICK",
+  invalidMessage: "Invalid message passed to sendTo",
+  unwrapLabel: "🎁 Unwrap",
+  destroyLabel: "🔥 Destroy",
+  action_delete: "delete"
+}
+```
+
+### submitToken
+
+Internal field ID for submit actions.
+
+```typescript
+CONSTANTS.submitToken: "_private_speedybot_"
+```
+
+<Expandable title="Details">
+Used internally to identify card submission actions. You typically don't need to use this directly.
+
+**Usage in source:**
+
+```typescript
+const isDelete = inputs[CONSTANTS.submitToken] === CONSTANTS.action_delete;
+if (isDelete) {
+  await this.deleteMessage(messageId);
+}
+```
+</Expandable>
+
+### CHIP_LABEL
+
+Default field ID for chip actions.
+
+```typescript
+CONSTANTS.CHIP_LABEL: "speedybot_CHIP_CLICK"
+```
+
+<Expandable title="Details">
+When you add chips to a card, they use this field ID by default. When a chip is clicked, the value appears in `$.text` rather than `$.data`.
+
+**Example:**
+
+```typescript
+// Add chips
+card.addChips(['help', 'docs', 'support']);
+
+// Handle chip clicks
+Bot.addStep(async ($) => {
+  // Chip values appear in $.text
+  if ($.text === 'help') {
+    await $.send('Help information...');
+  }
+  return $.next;
+});
+```
+
+You can override the field ID:
+
+```typescript
+card.addChips(['option1', 'option2'], 'myCustomId');
+
+// Handle with custom ID
+Bot.addStep(async ($) => {
+  if ($.data?.myCustomId) {
+    const choice = $.data.myCustomId;
+  }
+  return $.next;
+});
+```
+</Expandable>
+
+### invalidMessage
+
+Error message for invalid sendTo calls.
+
+```typescript
+CONSTANTS.invalidMessage: "Invalid message passed to sendTo"
+```
+
+### unwrapLabel
+
+Default button text for revealing stashed content.
+
+```typescript
+CONSTANTS.unwrapLabel: "🎁 Unwrap"
+```
+
+<Expandable title="Details">
+Used by `Bot.stashCard()` for the reveal button.
+
+**Example:**
+
+```typescript
+const card = Bot.stashCard(
+  'SECRET_PASSWORD_123',
+  'Your credentials',
+  '🔓 Reveal',  // Custom unwrap label
+  '🗑️ Delete'   // Custom destroy label
+);
+
+await Bot.sendTo(roomId, card);
+```
+</Expandable>
+
+### destroyLabel
+
+Default button text for delete actions.
+
+```typescript
+CONSTANTS.destroyLabel: "🔥 Destroy"
+```
+
+<Expandable title="Details">
+Used by `Bot.stashCard()` and `card.addDeleteButton()` for delete functionality.
+
+**Example:**
+
+```typescript
+// Using stashCard
+const secretCard = Bot.stashCard('secret data');
+
+// Using addDeleteButton directly
+const card = Bot.card()
+  .addTitle('Temporary Message')
+  .addDeleteButton('Remove');
+```
+</Expandable>
+
+### action_delete
+
+Internal value for delete actions.
+
+```typescript
+CONSTANTS.action_delete: "delete"
+```
+
+<Expandable title="Details">
+When a delete button is clicked, this value is submitted. SpeedyBot automatically handles deletion.
+
+**Internal handling:**
+
+```typescript
+const isDelete = inputs[CONSTANTS.submitToken] === CONSTANTS.action_delete;
+if (isDelete) {
+  await Bot.deleteMessage(messageId);
+}
+```
+</Expandable>
+
+## Token and secret keys
+
+Environment variable key names.
+
+### botTokenKey
+
+Environment variable name for bot token.
+
+```typescript
+export const botTokenKey: "BOT_TOKEN"
+```
+
+**Usage:**
+
+```typescript
+import { botTokenKey } from 'speedybot';
+
+// Cloudflare Workers
+export default {
+  async fetch(request: Request, env: Env) {
+    const token = env[botTokenKey];
+    Bot.setToken(token);
+    // ...
+  }
+};
+```
+
+### webhookSecretKey
+
+Environment variable name for webhook secret.
+
+```typescript
+export const webhookSecretKey: "WEBHOOK_SECRET"
+```
+
+**Usage:**
+
+```typescript
+import { webhookSecretKey } from 'speedybot';
+
+const secret = env[webhookSecretKey];
+await Bot.Setup(webhookUrl, secret);
+```
+
+### botPlaceholder
+
+Placeholder token for examples.
+
+```typescript
+export const botPlaceholder: "__REPLACE__ME__"
+```
+
+**Usage:**
+
+```typescript
+// In examples and templates
+const Bot = new SpeedyBot(botPlaceholder);
+// Reminds users to replace with actual token
+```
+
+## SpeedyCard constants
+
+Constants specific to card functionality.
+
+### SpeedyCardId
+
+Default field IDs for card elements.
+
+```typescript
+export const SpeedyCardId = {
+  dropdown: "addPickerDropdown_result"
+}
+```
+
+**Usage:**
+
+```typescript
+import { SpeedyCardId } from 'speedybot';
+
+card.addPickerDropdown(['Option 1', 'Option 2']);
+
+// Handle submission
+Bot.addStep(async ($) => {
+  if ($.data) {
+    const selected = $.data[SpeedyCardId.dropdown];
+    await $.send(`You selected: ${selected}`);
+  }
+  return $.next;
+});
+```
+
+## Usage examples
+
+### Handling chip clicks
+
+```typescript
+import { CONSTANTS } from 'speedybot';
+
+const card = Bot.card()
+  .addTitle('Quick Actions')
+  .addChips(['help', 'status', 'report']);
+
+await Bot.sendTo(roomId, card);
+
+Bot.addStep(async ($) => {
+  // Chips use $.text by default
+  switch ($.text) {
+    case 'help':
+      await $.send('Help information...');
+      break;
+    case 'status':
+      await $.send('System status: OK');
+      break;
+    case 'report':
+      await $.send('Generating report...');
+      break;
+  }
+  return $.next;
+});
+```
+
+### Custom chip field ID
+
+```typescript
+const customChipId = 'myActions';
+
+card.addChips(['action1', 'action2'], customChipId);
+
+Bot.addStep(async ($) => {
+  if ($.data?.[customChipId]) {
+    const action = $.data[customChipId];
+    await $.send(`Action: ${action}`);
+  }
+  return $.next;
+});
+```
+
+### Delete button functionality
+
+```typescript
+import { CONSTANTS } from 'speedybot';
+
+// SpeedyBot handles deletion automatically
+const card = Bot.card()
+  .addTitle('Temporary Info')
+  .addText('This message can be deleted')
+  .addDeleteButton('Remove');
+
+await Bot.sendTo(roomId, card);
+// When user clicks "Remove", card is automatically deleted
+```
+
+### Stash card with secrets
+
+```typescript
+const apiKey = 'sk_live_abc123xyz';
+
+const card = Bot.stashCard(
+  apiKey,
+  'Your API Key',
+  CONSTANTS.unwrapLabel,    // Default: "🎁 Unwrap"
+  CONSTANTS.destroyLabel    // Default: "🔥 Destroy"
+);
+
+await Bot.sendTo($.author.email, card);
+// User can reveal or destroy the secret
+```
+
+### Environment variable access
+
+```typescript
+import { botTokenKey, webhookSecretKey } from 'speedybot';
+
+// Cloudflare Workers example
+export default {
+  async fetch(request: Request, env: Env) {
+    Bot.setToken(env[botTokenKey]);
+    
+    if (request.method === 'POST') {
+      const webhook = await request.json();
+      await Bot.runMiddleware(webhook);
+    } else {
+      // Setup webhooks
+      const url = new URL(request.url).origin;
+      await Bot.Setup(url, env[webhookSecretKey]);
+    }
+    
+    return new Response('OK');
+  }
+};
+```
+
+### Custom field IDs
+
+```typescript
+import { SpeedyCardId } from 'speedybot';
+
+const card = Bot.card()
+  .addTitle('Select Priority')
+  .addPickerDropdown(['High', 'Medium', 'Low']);
+  // Uses SpeedyCardId.dropdown by default
+
+Bot.addStep(async ($) => {
+  if ($.data) {
+    // Access with constant
+    const priority = $.data[SpeedyCardId.dropdown];
+    
+    // Or use custom ID
+    // card.addPickerDropdown(['High', 'Medium', 'Low'], 'priority');
+    // const priority = $.data.priority;
+    
+    await $.send(`Priority set to: ${priority}`);
+  }
+  return $.next;
+});
+```
+
+## Complete constants reference
+
+```typescript
+import {
+  CONSTANTS,
+  botTokenKey,
+  webhookSecretKey,
+  botPlaceholder,
+  SpeedyCardId
+} from 'speedybot';
+
+// Internal constants
+CONSTANTS.submitToken      // "_private_speedybot_"
+CONSTANTS.CHIP_LABEL       // "speedybot_CHIP_CLICK"
+CONSTANTS.invalidMessage   // "Invalid message passed to sendTo"
+CONSTANTS.unwrapLabel      // "🎁 Unwrap"
+CONSTANTS.destroyLabel     // "🔥 Destroy"
+CONSTANTS.action_delete    // "delete"
+
+// Environment keys
+botTokenKey                // "BOT_TOKEN"
+webhookSecretKey          // "WEBHOOK_SECRET"
+botPlaceholder            // "__REPLACE__ME__"
+
+// Card field IDs
+SpeedyCardId.dropdown     // "addPickerDropdown_result"
+```

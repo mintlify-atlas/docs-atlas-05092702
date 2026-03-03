@@ -1,0 +1,554 @@
+---
+title: Handling submissions
+description: Process form data from SpeedyCards using $.data
+---
+
+## How card submissions work
+
+When a user submits a card (by clicking a submit button, chip, or regular button), the data from all form fields is automatically collected and made available in your bot step through `$.data`.
+
+<Steps>
+  <Step title="User interacts with card">
+    User fills out form fields and clicks submit or a button/chip
+  </Step>
+  <Step title="Data is collected">
+    SpeedyBot collects all form field values using their IDs
+  </Step>
+  <Step title="Step receives data">
+    Your bot step receives the data through `$.data`
+  </Step>
+  <Step title="Process submission">
+    Access the data, validate it, and take action
+  </Step>
+</Steps>
+
+## Accessing form data
+
+### Basic example
+
+```typescript
+// Send a card with form fields
+Bot.addStep(async ($) => {
+  if ($.text === 'form') {
+    const card = $.card()
+      .addTitle('Contact Form')
+      .addTextInput('Your name', 'name')
+      .addTextInput('Email address', 'email')
+      .addTextarea('Message', 'message');
+    
+    await $.send(card);
+  }
+  return $.next;
+});
+
+// Handle the submission
+Bot.addStep(async ($) => {
+  if ($.data) {
+    const { name, email, message } = $.data;
+    
+    await $.send(`Thanks ${name}!`);
+    await $.send(`We'll respond to ${email} soon.`);
+    
+    // Process the message
+    console.log('Message:', message);
+  }
+  return $.next;
+});
+```
+
+### Checking for specific data
+
+You can check for specific fields to determine which card was submitted:
+
+```typescript
+Bot.addStep(async ($) => {
+  // Check if this is the contact form
+  if ($.data?.name && $.data?.email) {
+    await handleContactForm($);
+    return $.end;
+  }
+  
+  // Check if this is the feedback form
+  if ($.data?.rating && $.data?.feedback) {
+    await handleFeedback($);
+    return $.end;
+  }
+  
+  return $.next;
+});
+```
+
+## Type safety with generics
+
+You can add type information to your steps for better autocomplete and type checking:
+
+```typescript
+type ContactFormData = {
+  name: string;
+  email: string;
+  message?: string;
+};
+
+Bot.addStep<ContactFormData>(async ($) => {
+  if ($.data) {
+    // TypeScript knows these fields exist
+    const { name, email, message } = $.data;
+    
+    await $.send(`Thanks ${name}!`);
+    
+    if (message) {
+      await $.send(`Your message: ${message}`);
+    }
+  }
+  return $.next;
+});
+```
+
+## Handling different input types
+
+### Text inputs
+
+Single-line text inputs return strings:
+
+```typescript
+const card = $.card()
+  .addTextInput('Username', 'username')
+  .addTextInput('Email', 'email');
+
+// Handle
+if ($.data?.username && $.data?.email) {
+  const username = $.data.username as string;
+  const email = $.data.email as string;
+}
+```
+
+### Textareas
+
+Multi-line textareas also return strings:
+
+```typescript
+const card = $.card()
+  .addTextarea('Your feedback', 'feedback');
+
+// Handle
+if ($.data?.feedback) {
+  const feedback = $.data.feedback as string;
+  await $.send(`You said: ${feedback}`);
+}
+```
+
+### Dropdown selections
+
+Dropdowns return the selected value:
+
+```typescript
+const card = $.card()
+  .addPickerDropdown([
+    { title: 'Low Priority', value: 'low' },
+    { title: 'High Priority', value: 'high' }
+  ], 'priority');
+
+// Handle
+if ($.data?.priority) {
+  const priority = $.data.priority; // 'low' or 'high'
+}
+```
+
+### Single select (radio buttons)
+
+Single select returns the chosen option:
+
+```typescript
+const card = $.card()
+  .addSingleSelect(['Yes', 'No', 'Maybe'], 'answer');
+
+// Handle
+if ($.data?.answer) {
+  const answer = $.data.answer; // 'Yes', 'No', or 'Maybe'
+}
+```
+
+### Multi select (checkboxes)
+
+<Warning>
+Multi-select returns a comma-separated string, not an array. You'll need to split it.
+</Warning>
+
+```typescript
+const card = $.card()
+  .addMultiSelect([
+    'Option 1',
+    'Option 2',
+    'Option 3'
+  ], 'selections');
+
+// Handle
+if ($.data?.selections) {
+  const selections = ($.data.selections as string).split(',');
+  await $.send(`You selected: ${selections.join(', ')}`);
+}
+```
+
+### Date and time pickers
+
+Date and time pickers return ISO format strings:
+
+```typescript
+const card = $.card()
+  .addPickerDate('Meeting date', 'date')
+  .addPickerTime('Meeting time', 'time');
+
+// Handle
+if ($.data?.date && $.data?.time) {
+  const date = $.data.date; // e.g., '2024-01-15'
+  const time = $.data.time; // e.g., '14:30'
+  
+  await $.send(`Meeting scheduled for ${date} at ${time}`);
+}
+```
+
+## Button and chip data
+
+Buttons and chips can attach custom data:
+
+### Simple button data
+
+```typescript
+const card = $.card()
+  .addTitle('Choose an action')
+  .addButton('Approve', 'action', 'approve')
+  .addButton('Reject', 'action', 'reject');
+
+Bot.addStep(async ($) => {
+  if ($.data?.action === 'approve') {
+    await $.send('Approved!');
+  } else if ($.data?.action === 'reject') {
+    await $.send('Rejected');
+  }
+  return $.next;
+});
+```
+
+### Object button data
+
+```typescript
+const card = $.card()
+  .addTitle('Select user')
+  .addButton('Alice', 'user', {
+    userId: '123',
+    userName: 'Alice',
+    role: 'admin'
+  })
+  .addButton('Bob', 'user', {
+    userId: '456',
+    userName: 'Bob',
+    role: 'user'
+  });
+
+Bot.addStep(async ($) => {
+  if ($.data?.user) {
+    const { userId, userName, role } = $.data.user;
+    await $.send(`Selected ${userName} (${role})`);
+  }
+  return $.next;
+});
+```
+
+### Chips
+
+Chips work the same as buttons:
+
+```typescript
+const card = $.card()
+  .addTitle('Rate your experience')
+  .addChips([
+    { title: '😍 Excellent', value: '5' },
+    { title: '😊 Good', value: '4' },
+    { title: '😐 Okay', value: '3' },
+    { title: '😞 Poor', value: '2' }
+  ], 'rating');
+
+Bot.addStep(async ($) => {
+  if ($.data?.rating) {
+    const rating = parseInt($.data.rating);
+    await $.send(`Thanks for rating: ${rating}/5`);
+  }
+  return $.next;
+});
+```
+
+## Attached data
+
+Use `attachData()` to include hidden context that isn't visible to the user:
+
+```typescript
+const card = $.card()
+  .addTitle('Approve Request')
+  .addText(`Request from ${userName}`)
+  .addButton('Approve', 'action', 'approve')
+  .addButton('Reject', 'action', 'reject')
+  .attachData({
+    requestId: '12345',
+    userId: '789',
+    timestamp: Date.now(),
+    department: 'engineering'
+  });
+
+Bot.addStep(async ($) => {
+  if ($.data?.action) {
+    const { action, requestId, userId, department } = $.data;
+    
+    // You have both the user's action and the context
+    if (action === 'approve') {
+      await approveRequest(requestId, userId, department);
+      await $.send('Request approved!');
+    }
+  }
+  return $.next;
+});
+```
+
+<Tip>
+Attached data is merged with form data, so you can access everything through `$.data`.
+</Tip>
+
+## Validation and error handling
+
+### Basic validation
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.data) {
+    const { email, name } = $.data;
+    
+    // Validate required fields
+    if (!name || !email) {
+      await $.send('❌ Please fill out all required fields');
+      return $.end;
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      await $.send('❌ Please enter a valid email address');
+      return $.end;
+    }
+    
+    // Process valid submission
+    await $.send('✅ Form submitted successfully!');
+  }
+  return $.next;
+});
+```
+
+### Re-prompting on error
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.data?.email) {
+    const email = $.data.email;
+    
+    if (!isValidEmail(email)) {
+      // Send error message
+      await $.send('❌ Invalid email address');
+      
+      // Re-send the form
+      const card = $.card()
+        .addTitle('Contact Form')
+        .addText('Please enter a valid email:')
+        .addTextInput('Email address', 'email');
+      
+      await $.send(card);
+      return $.end;
+    }
+    
+    await $.send('✅ Email verified!');
+  }
+  return $.next;
+});
+```
+
+## Displaying submission data
+
+Use `$.buildDataSnippet()` to show formatted submission data:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.data) {
+    await $.send('Submission received!');
+    
+    // Show formatted data
+    const snippet = $.buildDataSnippet($.data);
+    await $.send(snippet);
+  }
+  return $.next;
+});
+```
+
+## Complete example: Survey handler
+
+```typescript
+import { SpeedyBot, SurveyQuestion } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+// Show survey
+Bot.exact('survey', async ($) => {
+  const questions: SurveyQuestion[] = [
+    {
+      type: 'text',
+      question: 'Company name',
+      id: 'company'
+    },
+    {
+      type: 'picker-date',
+      question: 'Service date',
+      id: 'date'
+    },
+    {
+      type: 'single-select',
+      question: 'Quality rating',
+      choices: ['Excellent', 'Good', 'Average', 'Poor'],
+      id: 'rating'
+    },
+    {
+      type: 'multi-select',
+      question: 'Service highlights',
+      choices: ['Communication', 'Punctuality', 'Quality'],
+      id: 'highlights'
+    },
+    {
+      type: 'textarea',
+      question: 'Additional comments',
+      id: 'comments'
+    }
+  ];
+  
+  const card = $.card()
+    .survey(questions, '📝 Customer Survey')
+    .attachData({
+      surveyId: Date.now(),
+      userId: $.author.id
+    });
+  
+  await $.send(card);
+  return $.end;
+});
+
+// Handle survey submission
+type SurveyData = {
+  company?: string;
+  date?: string;
+  rating?: string;
+  highlights?: string;
+  comments?: string;
+  surveyId?: number;
+  userId?: string;
+};
+
+Bot.addStep<SurveyData>(async ($) => {
+  // Check if this is a survey submission
+  if ($.data?.surveyId && $.data?.company) {
+    const { 
+      company, 
+      date, 
+      rating, 
+      highlights, 
+      comments,
+      surveyId,
+      userId 
+    } = $.data;
+    
+    // Validate
+    if (!company || !date || !rating) {
+      await $.send('❌ Please complete all required fields');
+      return $.end;
+    }
+    
+    // Process highlights (comma-separated string)
+    const highlightsList = highlights ? highlights.split(',') : [];
+    
+    // Save to database
+    await saveSurveyResponse({
+      surveyId,
+      userId,
+      company,
+      date,
+      rating,
+      highlights: highlightsList,
+      comments
+    });
+    
+    // Confirm submission
+    const confirmCard = $.card()
+      .addTitle('✅ Survey Submitted')
+      .addText('Thank you for your feedback!')
+      .addTable({
+        'Company': company,
+        'Date': date,
+        'Rating': rating,
+        'Highlights': highlightsList.join(', ')
+      });
+    
+    await $.send(confirmCard);
+    return $.end;
+  }
+  
+  return $.next;
+});
+
+export default Bot;
+```
+
+## Debugging submissions
+
+Use `$.debug()` to see all submission data:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.data) {
+    // Log full debug info
+    const debugInfo = $.debug();
+    console.log('Submission debug:', debugInfo);
+    
+    // Show user what was submitted
+    const snippet = $.buildDataSnippet(debugInfo);
+    await $.send(snippet);
+  }
+  return $.next;
+});
+```
+
+## Best practices
+
+<Steps>
+  <Step title="Use descriptive IDs">
+    Give form fields clear, descriptive IDs like `user_email` instead of `input1`
+  </Step>
+  <Step title="Validate user input">
+    Always validate required fields and data formats before processing
+  </Step>
+  <Step title="Provide feedback">
+    Confirm successful submissions and explain errors clearly
+  </Step>
+  <Step title="Handle multi-select properly">
+    Remember to split comma-separated multi-select values
+  </Step>
+  <Step title="Use attached data for context">
+    Include IDs, timestamps, and other metadata with `attachData()`
+  </Step>
+  <Step title="Add type safety">
+    Use TypeScript generics on steps for better type checking
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="SpeedyCards overview" icon="cards" href="./overview">
+    Learn the basics of SpeedyCards
+  </Card>
+  <Card title="Building cards" icon="hammer" href="./building-cards">
+    Explore all card builder methods
+  </Card>
+</CardGroup>

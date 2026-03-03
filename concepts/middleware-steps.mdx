@@ -1,0 +1,492 @@
+---
+title: Middleware steps
+description: Understanding SpeedyBot's step-based middleware system and flow control
+---
+
+## Step execution model
+
+SpeedyBot processes incoming events through a series of middleware steps, similar to a pipeline. Each step is a function that receives the `$` parameter and must return either `$.next` or `$.end` to control flow.
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+Bot.addStep(async ($) => {
+  // Do something
+  return $.next; // Continue to next step
+});
+
+Bot.addStep(async ($) => {
+  // Do something else
+  return $.end; // Stop execution
+});
+
+Bot.addStep(async ($) => {
+  // This never runs if previous step returned $.end
+  return $.next;
+});
+```
+
+## Flow control
+
+### $.next - Continue execution
+
+Return `$.next` to pass control to the next step in the sequence:
+
+```typescript
+Bot.addStep(async ($) => {
+  await $.send('Step 1');
+  return $.next; // Move to next step
+});
+
+Bot.addStep(async ($) => {
+  await $.send('Step 2');
+  return $.next; // Move to next step
+});
+```
+
+### $.end - Stop execution
+
+Return `$.end` to terminate the step chain immediately:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.text === 'stop') {
+    await $.send('Stopping here!');
+    return $.end; // No more steps will execute
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  // This only runs if previous step returned $.next
+  await $.send('Continuing...');
+  return $.next;
+});
+```
+
+<Warning>
+Always return either `$.next` or `$.end`. The return value controls whether the step chain continues or stops.
+</Warning>
+
+## Adding steps
+
+### addStep - Add a single step
+
+Add steps to your bot using `addStep()`. Steps execute in the order they're added:
+
+```typescript
+Bot.addStep(async ($) => {
+  console.log('Step 1 executes first');
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  console.log('Step 2 executes second');
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  console.log('Step 3 executes third');
+  return $.next;
+});
+```
+
+**Type signature:**
+```typescript
+addStep<T = AttachedData>(middleware: Middleware<T>): void
+```
+
+### addStepSequence - Add multiple steps
+
+Add multiple steps at once with `addStepSequence()`:
+
+```typescript
+const steps = [
+  async ($) => {
+    await $.send('Step 1');
+    return $.next;
+  },
+  async ($) => {
+    await $.send('Step 2');
+    return $.next;
+  },
+  async ($) => {
+    await $.send('Step 3');
+    return $.next;
+  }
+];
+
+Bot.addStepSequence(steps);
+```
+
+**Type signature:**
+```typescript
+addStepSequence<T = AttachedData>(middlewares: Middleware<T>[]): void
+```
+
+### insertStepToFront - Priority steps
+
+Add a step that executes before all other steps:
+
+```typescript
+// These run in normal order
+Bot.addStep(async ($) => {
+  console.log('Regular step');
+  return $.next;
+});
+
+// This runs FIRST
+Bot.insertStepToFront(async ($) => {
+  console.log('Priority step');
+  return $.next;
+});
+```
+
+**Type signature:**
+```typescript
+insertStepToFront(middleware: Middleware): void
+```
+
+## Conditional flow
+
+Create conditional execution paths by returning `$.end` or `$.next` based on conditions:
+
+<CodeGroup>
+```typescript Basic example
+Bot.addStep(async ($) => {
+  if ($.text === 'ping') {
+    await $.send('pong');
+    return $.end; // Stop here
+  }
+  return $.next; // Continue to other steps
+});
+
+Bot.addStep(async ($) => {
+  // Only reached if text !== 'ping'
+  await $.send('General message handler');
+  return $.next;
+});
+```
+
+```typescript File handling
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const { name, extension, contentType } = $.file;
+    await $.send(`File received: ${name}`);
+    
+    if (extension === 'json') {
+      const data = await $.file.getData();
+      await $.send(`JSON content: ${JSON.stringify(data)}`);
+      return $.end; // Stop after handling JSON
+    }
+    
+    return $.end; // Stop after handling any file
+  }
+  return $.next; // Not a file, continue
+});
+```
+
+```typescript Card submissions
+Bot.addStep(async ($) => {
+  if ($.data) {
+    await $.send('Card data received!');
+    await $.send($.buildDataSnippet($.data));
+    return $.end; // Stop after handling card
+  }
+  return $.next;
+});
+```
+</CodeGroup>
+
+## Shortcut methods
+
+SpeedyBot provides convenient shortcut methods that automatically handle step insertion and flow control:
+
+### exact - Match exact text
+
+```typescript
+Bot.exact('help', async ($) => {
+  await $.send('Here is the help menu...');
+  return $.end;
+});
+
+// User types "help" → triggers handler
+// User types "Help" → doesn't trigger (case-sensitive)
+```
+
+**Type signature:**
+```typescript
+exact(keyword: string, callback: Middleware): void
+```
+
+### contains - Match text containing keywords
+
+```typescript
+Bot.contains('error', async ($) => {
+  await $.send('I see you mentioned an error. Can you provide more details?');
+  return $.end;
+});
+
+// Works with arrays too
+Bot.contains(['hello', 'hi', 'hey'], async ($) => {
+  await $.send(`Hi ${$.author.name}!`);
+  return $.end;
+});
+```
+
+**Type signature:**
+```typescript
+contains(keyword: string | string[], callback: Middleware): void
+```
+
+### regex - Match with regular expressions
+
+```typescript
+Bot.regex(/^\d{5}$/, async ($) => {
+  await $.send(`You entered a 5-digit zip code: ${$.text}`);
+  return $.end;
+});
+
+Bot.regex(/https?:\/\/[^\s]+/, async ($) => {
+  await $.send('I detected a URL in your message');
+  return $.next; // Allow other steps to run
+});
+```
+
+**Type signature:**
+```typescript
+regex(pattern: RegExp, callback: Middleware): void
+```
+
+### onCamera - Handle image uploads
+
+```typescript
+Bot.onCamera(async ($) => {
+  if ($.file) {
+    await $.send('Processing your image...');
+    const imageData = await $.file.getData<ArrayBuffer>();
+    // Send to vision API, etc.
+    return $.end;
+  }
+  return $.next;
+}, ['png', 'jpg', 'jpeg']); // Optional: custom extensions
+```
+
+**Type signature:**
+```typescript
+onCamera(callback: Middleware, formats?: string[]): void
+```
+
+## Synchronous vs asynchronous steps
+
+Steps can be synchronous or asynchronous depending on your needs:
+
+<Tabs>
+  <Tab title="Asynchronous">
+    ```typescript
+    // Use async when you need to await operations
+    Bot.addStep(async ($) => {
+      await $.send('Message 1');
+      await $.send('Message 2');
+      await $.send('Message 3');
+      return $.next;
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Synchronous">
+    ```typescript
+    // Use sync for quick operations
+    Bot.addStep(($) => {
+      // Set context flags
+      $.ctx.isDev = true;
+      $.ctx.timestamp = Date.now();
+      return $.next;
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Practical examples
+
+### Example 1: Command router
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+// Priority: Handle special commands first
+Bot.insertStepToFront(async ($) => {
+  if ($.text === '$clear') {
+    await $.clearScreen();
+    return $.end;
+  }
+  return $.next;
+});
+
+// File uploads
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const { name, extension } = $.file;
+    await $.send(`Received: ${name} (*.${extension})`);
+    return $.end;
+  }
+  return $.next;
+});
+
+// Commands
+Bot.addStep(async ($) => {
+  if (!$.text) return $.next;
+  
+  const cmd = $.text.toLowerCase();
+  
+  if (cmd === 'ping') {
+    await $.send('pong');
+    return $.end;
+  }
+  
+  if (cmd === 'help') {
+    await $.send('Available commands: ping, help, status');
+    return $.end;
+  }
+  
+  if (cmd === 'status') {
+    await $.send('All systems operational');
+    return $.end;
+  }
+  
+  return $.next; // No command matched
+});
+
+// Default fallback
+Bot.addStep(async ($) => {
+  await $.send(`You said: ${$.text}`);
+  return $.next;
+});
+```
+
+### Example 2: Multi-step conversation
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+// Step 1: Greet
+Bot.addStep(async ($) => {
+  if ($.text?.toLowerCase() === 'hello') {
+    $.ctx.conversation = 'greeting';
+    await $.send(`Hi ${$.author.name}! What's your favorite color?`);
+    return $.end;
+  }
+  return $.next;
+});
+
+// Step 2: Collect color
+Bot.addStep(async ($) => {
+  if ($.ctx.conversation === 'greeting' && $.text) {
+    $.ctx.color = $.text;
+    $.ctx.conversation = 'color_received';
+    await $.send(`Nice! ${$.text} is a great color. What's your age?`);
+    return $.end;
+  }
+  return $.next;
+});
+
+// Step 3: Collect age
+Bot.addStep(async ($) => {
+  if ($.ctx.conversation === 'color_received' && $.text) {
+    await $.send(
+      `Thanks! You like ${$.ctx.color} and you're ${$.text} years old.`
+    );
+    // Clear conversation state
+    delete $.ctx.conversation;
+    delete $.ctx.color;
+    return $.end;
+  }
+  return $.next;
+});
+```
+
+### Example 3: Conditional branching
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+Bot.addStep(async ($) => {
+  await $.send('Step 1');
+  return $.next;
+});
+
+Bot.addStep(($) => {
+  // Set data for downstream steps
+  $.ctx.shouldSkip = Math.random() > 0.5;
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.ctx.shouldSkip) {
+    await $.send('Skipping to the end!');
+    return $.end; // Skip remaining steps
+  }
+  await $.send('Step 2');
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  // Only reached if shouldSkip was false
+  await $.send('Step 3');
+  return $.next;
+});
+```
+
+## Best practices
+
+<Info>
+**Keep steps focused**: Each step should have a single responsibility. This makes your bot easier to understand, test, and maintain.
+</Info>
+
+1. **Order matters**: Steps execute in the order they're added. Put high-priority steps first.
+
+2. **Use `$.end` judiciously**: Only stop execution when you've fully handled the event.
+
+3. **Leverage shortcuts**: Use `exact()`, `contains()`, and `regex()` for cleaner code.
+
+4. **Type your data**: Use TypeScript generics for type-safe card handling:
+   ```typescript
+   type FormData = { name: string; email: string };
+   
+   Bot.addStep<FormData>(async ($) => {
+     if ($.data) {
+       // $.data.name and $.data.email are typed
+     }
+     return $.next;
+   });
+   ```
+
+5. **Handle errors**: Use `Bot.captureError()` to handle errors gracefully:
+   ```typescript
+   Bot.captureError(async (error) => {
+     console.error('Bot error:', error);
+     if (error.roomId) {
+       await Bot.sendTo(error.roomId, 'Sorry, something went wrong!');
+     }
+   });
+   ```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Context state" icon="database" href="/concepts/context-state">
+    Learn about managing state with $.ctx
+  </Card>
+  
+  <Card title="SpeedyBot basics" icon="rocket" href="/concepts/speedybot-basics">
+    Review core concepts
+  </Card>
+</CardGroup>

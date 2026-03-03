@@ -1,0 +1,404 @@
+---
+title: Privacy-respecting location sharing
+description: Prompt users for coarse-grained location data in a privacy-first way
+---
+
+## Overview
+
+This pattern demonstrates how to request location information from users in a privacy-respecting manner. Instead of tracking precise GPS coordinates, it captures coarse-grained data like city, timezone, and region.
+
+<Info>
+This approach mirrors the permission patterns users are familiar with on mobile devices, adapted for conversational interfaces.
+</Info>
+
+![Location Demo](https://raw.githubusercontent.com/valgaze/speedybot-utils/main/assets/various/location_demo.gif?raw=true)
+
+## Use case
+
+Location-aware bots can provide contextual responses based on:
+
+- **Time of day** - Greet users appropriately ("Good morning", "Good evening")
+- **Timezone** - Schedule meetings or reminders at appropriate times
+- **Region** - Provide localized information or services
+- **City/Country** - Offer location-specific resources
+
+The coarse-grained approach respects user privacy while still enabling valuable location features.
+
+## Architecture
+
+This example uses Cloudflare Workers to:
+
+1. Generate secure, one-time-use location request links
+2. Capture location data from Cloudflare's edge network
+3. Validate requests and send location data back to Webex
+
+<Warning>
+The implementation uses encrypted message IDs as one-time tokens that are deleted after use, ensuring links expire automatically.
+</Warning>
+
+## Setup
+
+<Steps>
+
+<Step title="Clone and install">
+
+```bash
+git clone https://github.com/valgaze/speedybot
+cd speedybot/examples/location
+npm install
+```
+
+</Step>
+
+<Step title="Create your bot">
+
+Create a bot from [https://developer.webex.com/my-apps/new/bot](https://developer.webex.com/my-apps/new/bot) and save the token.
+
+</Step>
+
+<Step title="Set up Cloudflare">
+
+If you don't have one, create a [Cloudflare account](https://dash.cloudflare.com/sign-up).
+
+Authenticate wrangler CLI:
+
+```bash
+npx wrangler login
+```
+
+Deploy to get your Worker URL:
+
+```bash
+npm run deploy
+```
+
+Your URL will look like: `https://speedybot-location.your-username.workers.dev`
+
+</Step>
+
+<Step title="Configure secrets">
+
+Add your bot token:
+
+```bash
+npx wrangler secret put BOT_TOKEN
+```
+
+Add a random encryption secret (keep this secure):
+
+```bash
+npx wrangler secret put CRYPTO_SECRET
+```
+
+Optionally add a webhook secret:
+
+```bash
+npx wrangler secret put WEBHOOK_SECRET
+```
+
+</Step>
+
+<Step title="Deploy">
+
+Redeploy with your secrets:
+
+```bash
+npm run deploy
+```
+
+</Step>
+
+<Step title="Register webhooks">
+
+Go to [SpeedyBot Garage](https://speedybot.js.org/garage), enter your bot token, and register a webhook pointing to your Worker URL.
+
+<Tip>
+Include your webhook secret for secure request validation.
+</Tip>
+
+</Step>
+
+</Steps>
+
+## Implementation
+
+### Location request handler
+
+When a user requests location-based features, the bot generates a secure link:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+import { encrypt } from '../src/crypto';
+
+const Bot = new SpeedyBot<'cryptoSecret'>();
+
+Bot.addStep(async ($) => {
+  if ($.text?.toLowerCase() === 'location') {
+    const { displayName } = await Bot.getSelf();
+    
+    // Create a root message that acts as the "state" token
+    const rootMessage = `'${displayName}' is requesting access to limited location data (country, timezone, city)`;
+    const sentMsg = await $.send(rootMessage);
+    
+    // Encrypt the message ID
+    const encryptedMsgId = await encrypt(
+      sentMsg.id,
+      Bot.getSecret('cryptoSecret') as string
+    );
+    
+    // Build location request URL
+    const url = `${$.ctx.botURL}/location?messageId=${encryptedMsgId}`;
+    
+    const card = $.card()
+      .addHeader('📍 Location Request')
+      .addText(`'${displayName}' wants to use your location, allow?`)
+      .addLinkButton(url, '✅ Allow')
+      .addDeleteButton('❌ Disallow');
+      
+    await $.send(card);
+    return $.end;
+  }
+  
+  return $.next;
+});
+```
+
+### Location endpoint
+
+The `/location` route captures data from Cloudflare's edge:
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const urlRef = new URL(request.url);
+    
+    if (request.method === 'GET' && urlRef.pathname === '/location') {
+      // Extract location data from Cloudflare request
+      const { cf } = request;
+      const {
+        city,
+        colo,
+        continent,
+        country,
+        latitude,
+        longitude,
+        postalCode,
+        region,
+        timezone = '',
+      } = (cf as IncomingRequestCfProperties) || {};
+      
+      // Validate the encrypted message ID
+      const rawMsg = urlRef.searchParams.get('messageId');
+      if (!rawMsg) {
+        return new Response('Missing parameters', { status: 422 });
+      }
+      
+      const messageId = await decrypt(rawMsg, env.CRYPTO_SECRET);
+      const { roomId, ok } = await checkMessage(Bot, messageId);
+      
+      if (!ok) {
+        return new Response('Sorry, that link is no longer valid', {
+          status: 401,
+        });
+      }
+      
+      // Determine time of day from timezone
+      const locationDetails = {
+        tod: tod_generator(timezone),
+        city,
+        country,
+        latitude,
+        longitude,
+        region,
+        timezone,
+      };
+      
+      // Send location data back to Webex
+      ctx.waitUntil(
+        new Promise(async (resolve) => 
+          resolve(locationHandler(Bot, roomId, locationDetails))
+        )
+      );
+      
+      // Close the browser window
+      const html = `You can close this window.<script>window.close();</script>`;
+      return new Response(html, {
+        status: 200,
+        headers: { 'content-type': 'text/html;charset=UTF-8' },
+      });
+    }
+  }
+};
+```
+
+### Message validation
+
+The `checkMessage` function validates and consumes the one-time token:
+
+```typescript
+export async function checkMessage(
+  bot: SpeedyBot,
+  messageId: string
+): Promise<{ roomId: string; ok: boolean }> {
+  let msgExists: boolean | undefined;
+  let roomId;
+  
+  try {
+    // Fetch message details
+    const HACK_FOR_PRIVATE_METHODS = Object.getPrototypeOf(bot);
+    const res = await HACK_FOR_PRIVATE_METHODS.getData.call(
+      bot,
+      'text',
+      { data: { id: messageId } }
+    );
+    
+    roomId = res.roomId;
+    
+    // Delete the message to invalidate the link
+    await bot.deleteMessage(messageId);
+    msgExists = true;
+  } catch (e) {
+    if (e?.statusCode === 404) {
+      msgExists = false;
+    }
+  }
+  
+  return { roomId, ok: Boolean(msgExists) };
+}
+```
+
+### Time of day helper
+
+Calculate appropriate greeting based on timezone:
+
+```typescript
+export type TOD = 'morning' | 'afternoon' | 'evening' | 'error';
+
+export const tod_generator = (timezone: string): TOD => {
+  try {
+    const date = new Date().toLocaleString('en-US', { timeZone: timezone });
+    const hour = new Date(date).getHours();
+    
+    if (20 <= hour || hour <= 3) return 'evening';
+    if (hour <= 11) return 'morning';
+    if (12 <= hour && hour <= 16) return 'afternoon';
+    if (17 <= hour && hour <= 19) return 'evening';
+  } catch (e) {
+    return 'error';
+  }
+  
+  return 'morning';
+};
+```
+
+### Location response handler
+
+Send location data back as a card:
+
+```typescript
+export async function locationHandler(
+  bot: SpeedyBot,
+  roomId: string,
+  locationData: Location
+) {
+  const locationCard = bot.card()
+    .addTitle(`Good ${locationData.tod}`)
+    .addSubtitle(
+      `Note: this timezone + location data is not stored/collected/sold and is not hyper-accurate`
+    )
+    .addTable([
+      ['Country', locationData.country],
+      ['City', locationData.city],
+      ['Region', locationData.region],
+      ['Timezone', locationData.timezone],
+    ])
+    .addLink(
+      `https://maps.google.com/?q=${locationData.latitude},${locationData.longitude}`,
+      'See map 🗺'
+    );
+  
+  await bot.sendTo(roomId, locationCard);
+  return true;
+}
+```
+
+## Security features
+
+<Steps>
+
+<Step title="One-time tokens">
+Encrypted message IDs serve as one-time tokens. After validation, the message is deleted, making the link unusable.
+</Step>
+
+<Step title="Encryption">
+Message IDs are encrypted before being embedded in URLs, preventing tampering.
+</Step>
+
+<Step title="Webhook validation">
+Optional webhook secrets ensure requests come from Webex.
+</Step>
+
+<Step title="Coarse data">
+Only city-level location data is captured, never precise GPS coordinates.
+</Step>
+
+</Steps>
+
+<Warning>
+Never store or transmit location data unless absolutely necessary. This example deliberately keeps data coarse-grained and transient.
+</Warning>
+
+## Location data available
+
+```typescript
+export type Location = {
+  city: string;         // ex. 'Los Angeles'
+  colo: string;         // ex. 'LAX' (airport code)
+  continent: string;    // ex. 'NA'
+  latitude: string;     // Coarse-grained
+  longitude: string;    // Coarse-grained
+  country: string;      // ex. 'US'
+  postalCode: string;   // ex. '90210'
+  region: string;       // State/province
+  timezone: string;     // ex. 'America/Los_Angeles'
+  tod: TOD;            // 'morning' | 'afternoon' | 'evening'
+};
+```
+
+## Customization
+
+### Add permission chips
+
+Include location as a suggestion chip:
+
+```typescript
+const card = $.card()
+  .addChips([
+    { title: '🌍 Share location', value: 'location' },
+    { title: 'Other option', value: 'other' }
+  ]);
+```
+
+### Conditional features
+
+Use location data to enable features:
+
+```typescript
+if (locationData.country === 'US') {
+  // Provide US-specific resources
+} else if (locationData.tod === 'evening') {
+  await $.send('Good evening! How can I help you tonight?');
+}
+```
+
+## Deployment notes
+
+This pattern is designed for Cloudflare Workers but can be adapted to:
+
+- **AWS Lambda** - Use API Gateway to expose `/location` endpoint
+- **Azure Functions** - Capture request metadata for location
+- **Standard servers** - Use IP geolocation services
+
+<Tip>
+Cloudflare provides location data from their edge network automatically via the `cf` property on requests.
+</Tip>

@@ -1,0 +1,469 @@
+---
+title: Utilities
+description: Utility functions and helpers
+---
+
+Helper functions and utilities exported from SpeedyBot.
+
+## Request handler
+
+### mainRequester
+
+Default HTTP request handler using fetch.
+
+```typescript
+export const mainRequester: CoreMakerequest = async (
+  url: string,
+  body: any,
+  opts: RequestOps = {}
+) => Promise<Response>
+```
+
+<ParamField path="url" type="string" required>
+  Target URL
+</ParamField>
+
+<ParamField path="body" type="any" required>
+  Request body
+</ParamField>
+
+<ParamField path="opts" type="RequestOps" optional>
+  Request options
+</ParamField>
+
+**Usage:**
+
+```typescript
+import { mainRequester } from 'speedybot';
+
+// Used internally by SpeedyBot
+const Bot = new SpeedyBot(token, mainRequester);
+
+// Can be customized for testing
+const mockRequester: CoreMakerequest = async (url, body, opts) => {
+  // Custom implementation
+  return mockResponse;
+};
+
+const TestBot = new SpeedyBot(token, mockRequester);
+```
+
+## Validation utilities
+
+### checkers
+
+Validation helper functions.
+
+```typescript
+export const checkers = {
+  isSpeedyCard(input: SpeedyCard | object): boolean;
+  isCard(cardCandidate: any | SpeedyCard): boolean;
+  isEmail(candidate: string): boolean;
+}
+```
+
+#### isSpeedyCard
+
+Checks if input is a SpeedyCard instance.
+
+```typescript
+checkers.isSpeedyCard(input: SpeedyCard | object): boolean
+```
+
+**Example:**
+
+```typescript
+import { checkers } from 'speedybot';
+
+const card = new SpeedyCard();
+if (checkers.isSpeedyCard(card)) {
+  console.log('Valid SpeedyCard');
+}
+```
+
+#### isCard
+
+Checks if input is an Adaptive Card (SpeedyCard or raw JSON).
+
+```typescript
+checkers.isCard(cardCandidate: any | SpeedyCard): boolean
+```
+
+**Example:**
+
+```typescript
+const rawCard = {
+  $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+  type: 'AdaptiveCard',
+  version: '1.0',
+  body: []
+};
+
+if (checkers.isCard(rawCard)) {
+  console.log('Valid card');
+}
+```
+
+#### isEmail
+
+Validates email format.
+
+```typescript
+checkers.isEmail(candidate: string): boolean
+```
+
+**Example:**
+
+```typescript
+if (checkers.isEmail('user@example.com')) {
+  // Valid email
+}
+```
+
+## Visual utilities
+
+### logoRoll
+
+Returns ASCII art SpeedyBot logo.
+
+```typescript
+export const logoRoll: (idx?: number) => string
+```
+
+<ParamField path="idx" type="number" optional>
+  Specific logo variant (0-4), random if omitted
+</ParamField>
+
+**Usage:**
+
+```typescript
+import { logoRoll } from 'speedybot';
+
+console.log(logoRoll());
+// Displays random ASCII art logo
+
+console.log(logoRoll(0));
+// Displays specific logo variant
+```
+
+**Output examples:**
+
+<CodeGroup>
+
+```text Variant 1
+███████╗██████╗ ███████╗███████╗██████╗ ██╗   ██╗██████╗  ██████╗ ████████╗
+██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗╚██╗ ██╔╝██╔══██╗██╔═══██╗╚══██╔══╝
+███████╗██████╔╝█████╗  █████╗  ██║  ██║ ╚████╔╝ ██████╔╝██║   ██║   ██║
+╚════██║██╔═══╝ ██╔══╝  ██╔══╝  ██║  ██║  ╚██╔╝  ██╔══██╗██║   ██║   ██║
+███████║██║     ███████╗███████╗██████╔╝   ██║   ██████╔╝╚██████╔╝   ██║
+╚══════╝╚═╝     ╚══════╝╚══════╝╚═════╝    ╚═╝   ╚═════╝  ╚═════╝    ╚═╝
+```
+
+```text Variant 2
+╱╭━━━╮╱╭━━━╮╱╭━━━╮╱╭━━━╮╱╭━━━╮╱╭╮╱╱╭╮╱╭━━╮╱╱╭━━━╮╱╭━━━━╮╱
+╱┃╭━╮┃╱┃╭━╮┃╱┃╭━━╯╱┃╭━━╯╱╰╮╭╮┃╱┃╰╮╭╯┃╱┃╭╮┃╱╱┃╭━╮┃╱┃╭╮╭╮┃╱
+╱┃╰━━╮╱┃╰━╯┃╱┃╰━━╮╱┃╰━━╮╱╱┃┃┃┃╱╰╮╰╯╭╯╱┃╰╯╰╮╱┃┃╱┃┃╱╰╯┃┃╰╯╱
+╱╰━━╮┃╱┃╭━━╯╱┃╭━━╯╱┃╭━━╯╱╱┃┃┃┃╱╱╰╮╭╯╱╱┃╭━╮┃╱┃┃╱┃┃╱╱╱┃┃╱╱╱
+╱┃╰━╯┃╱┃┃╱╱╱╱┃╰━━╮╱┃╰━━╮╱╭╯╰╯┃╱╱╱┃┃╱╱╱┃╰━╯┃╱┃╰━╯┃╱╱╱┃┃╱╱╱
+╱╰━━━╯╱╰╯╱╱╱╱╰━━━╯╱╰━━━╯╱╰━━━╯╱╱╱╰╯╱╱╱╰━━━╯╱╰━━━╯╱╱╱╰╯╱╱╱
+```
+
+</CodeGroup>
+
+## Error handling
+
+### RequestError
+
+Custom error class for HTTP request failures.
+
+```typescript
+class RequestError extends Error {
+  statusCode: number;
+  url: string;
+  
+  constructor(message: string, statusCode: number, url: string)
+}
+```
+
+**Properties:**
+
+<ResponseField name="message" type="string">
+  Error description
+</ResponseField>
+
+<ResponseField name="statusCode" type="number">
+  HTTP status code
+</ResponseField>
+
+<ResponseField name="url" type="string">
+  URL that failed
+</ResponseField>
+
+**Usage:**
+
+```typescript
+try {
+  await Bot.sendTo('invalid@email', 'test');
+} catch (error) {
+  if (error instanceof RequestError) {
+    console.error(`Request to ${error.url} failed with status ${error.statusCode}`);
+  }
+}
+```
+
+## SpeedyBot instance methods
+
+These utilities are available as methods on the SpeedyBot instance:
+
+### pickRandom
+
+Picks random item from array or generates random number.
+
+```typescript
+Bot.pickRandom<T>(list: T[]): T
+Bot.pickRandom(min: number, max: number): number
+```
+
+**Examples:**
+
+```typescript
+// Pick from array
+const greetings = ['Hello', 'Hi', 'Hey'];
+const greeting = Bot.pickRandom(greetings);
+
+// Generate random number
+const dice = Bot.pickRandom(1, 6);
+
+// Also available in $ parameter
+Bot.addStep(async ($) => {
+  const response = $.pickRandom(['Yes', 'No', 'Maybe']);
+  await $.send(response);
+  return $.next;
+});
+```
+
+### rando
+
+Generates random 11-character alphanumeric string.
+
+```typescript
+Bot.rando(): string
+```
+
+**Example:**
+
+```typescript
+const uniqueId = Bot.rando();
+// "k7j3n9m2x8q"
+
+const filename = `report_${Bot.rando()}.json`;
+// "report_p4h8d2k9n5m.json"
+```
+
+### fuzzyMatch
+
+Checks if candidate matches any option (case-insensitive partial match).
+
+```typescript
+Bot.fuzzyMatch(candidate: string, options: string[]): boolean
+```
+
+<ParamField path="candidate" type="string" required>
+  String to match
+</ParamField>
+
+<ParamField path="options" type="string[]" required>
+  Possible matches
+</ParamField>
+
+**Example:**
+
+```typescript
+const userInput = 'hel';
+const commands = ['help', 'hello', 'health'];
+
+if (Bot.fuzzyMatch(userInput, commands)) {
+  // Matches because "hel" is contained in "help", "hello", "health"
+}
+
+Bot.addStep(async ($) => {
+  if ($.text && Bot.fuzzyMatch($.text, ['quit', 'exit', 'bye'])) {
+    await $.send('Goodbye!');
+    return $.end;
+  }
+  return $.next;
+});
+```
+
+### convertToHash
+
+Converts array of "key=value" strings to object.
+
+```typescript
+Bot.convertToHash(arr: string[]): { [key: string]: string }
+```
+
+<ParamField path="arr" type="string[]" required>
+  Array of "key=value" pairs
+</ParamField>
+
+**Example:**
+
+```typescript
+const envVars = [
+  'API_KEY=abc123',
+  'SECRET=xyz789',
+  'ENDPOINT=https://api.example.com'
+];
+
+const config = Bot.convertToHash(envVars);
+// {
+//   API_KEY: 'abc123',
+//   SECRET: 'xyz789',
+//   ENDPOINT: 'https://api.example.com'
+// }
+
+Bot.addSecrets(config);
+```
+
+## $ parameter utilities
+
+These utilities are also available on the `$` parameter:
+
+### buildLink
+
+Creates markdown link.
+
+```typescript
+$.buildLink(target: string, label?: string, noBold?: boolean): string
+```
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  const link = $.buildLink('https://example.com', 'Click here');
+  // "**[Click here](https://example.com)**"
+  
+  const plainLink = $.buildLink('https://example.com', 'Click', true);
+  // "[Click](https://example.com)"
+  
+  await $.send(`Visit ${link}`);
+  return $.next;
+});
+```
+
+### buildDMLink
+
+Creates link to open direct message.
+
+```typescript
+$.buildDMLink(target: string, label: string): string
+```
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  const dmLink = $.buildDMLink('support@company.com', 'Contact Support');
+  await $.send(`Need help? ${dmLink}`);
+  return $.next;
+});
+```
+
+### buildDataSnippet
+
+Formats data as code block.
+
+```typescript
+$.buildDataSnippet(data: any, type?: string): string
+```
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  const debugInfo = $.debug();
+  const snippet = $.buildDataSnippet(debugInfo, 'json');
+  await $.send(snippet);
+  return $.next;
+});
+```
+
+### fillTemplate
+
+Fills template with values.
+
+```typescript
+$.fillTemplate(
+  utterances: string[],
+  template: { [key: string]: string | number }
+): string
+```
+
+**Example:**
+
+```typescript
+Bot.addStep(async ($) => {
+  const templates = [
+    'Hello $[name], your balance is $[balance]!',
+    'Welcome $[name]! You have $[balance] credits.'
+  ];
+  
+  const message = $.fillTemplate(templates, {
+    name: $.author.name,
+    balance: 1000
+  });
+  
+  await $.send(message);
+  return $.next;
+});
+```
+
+## Complete utility example
+
+```typescript
+import { SpeedyBot, checkers, logoRoll } from 'speedybot';
+
+const Bot = new SpeedyBot(token);
+
+// Display logo on startup
+console.log(logoRoll());
+
+Bot.addStep(async ($) => {
+  const { text, author } = $;
+  
+  if (!text) return $.next;
+  
+  // Fuzzy matching for help
+  if (Bot.fuzzyMatch(text, ['help', 'support', 'assist'])) {
+    const dmLink = $.buildDMLink('support@company.com', 'Contact Support');
+    await $.send(`Need help? ${dmLink}`);
+    return $.end;
+  }
+  
+  // Random response
+  if (text === 'flip') {
+    const result = $.pickRandom(['Heads', 'Tails']);
+    await $.send(`Coin flip: ${result}`);
+    return $.end;
+  }
+  
+  // Debug info
+  if (text === 'debug') {
+    const info = $.debug();
+    const snippet = $.buildDataSnippet(info);
+    await $.send(snippet);
+    return $.end;
+  }
+  
+  // Template response
+  const message = $.fillTemplate(
+    ['Hello $[name]!', 'Hi $[name]!', 'Hey $[name]!'],
+    { name: author.name }
+  );
+  await $.send(message);
+  
+  return $.next;
+});
+```

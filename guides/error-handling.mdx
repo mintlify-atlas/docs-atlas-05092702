@@ -1,0 +1,401 @@
+---
+title: Error handling
+description: Gracefully handle errors with setErrorHandler
+---
+
+Proper error handling ensures your bot remains responsive and helpful even when things go wrong.
+
+## Basic error handler
+
+Use `Bot.captureError()` (alias for `setErrorHandler`) to catch errors from any step:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+// Define error handler
+Bot.captureError(async (error) => {
+  const { message, roomId, status } = error;
+  
+  if (roomId) {
+    await Bot.sendTo(
+      roomId,
+      `Whoops, there was a problem: ${message}`
+    );
+  }
+  
+  // Log for debugging
+  console.error('Bot Error:', { message, status });
+});
+
+export default Bot;
+```
+
+## Error object structure
+
+The error handler receives a `SpeedyError` object:
+
+```typescript ~/workspace/source/src/types.ts
+export type SpeedyError = {
+  e: unknown;              // Original error
+  message: string;         // Error message
+  status?: string | number; // HTTP status or error code
+  roomId?: string;         // Room where error occurred
+};
+```
+
+## Common error patterns
+
+### Send user-friendly messages
+
+```typescript ~/workspace/source/examples/speedybot-starter/settings/bot.ts
+Bot.captureError(async (payload) => {
+  const { roomId, message } = payload;
+  
+  if (roomId) {
+    await Bot.sendTo(
+      roomId,
+      `Whoops, there was a problem: ${message}`
+    );
+  }
+});
+```
+
+### Log errors for debugging
+
+```typescript
+Bot.captureError(async (error) => {
+  const { e, message, status, roomId } = error;
+  
+  // Log to console
+  console.error('Error occurred:', {
+    message,
+    status,
+    roomId,
+    stack: e instanceof Error ? e.stack : 'No stack trace',
+  });
+  
+  // Send to monitoring service
+  await logToMonitoring({
+    severity: 'error',
+    message,
+    context: { roomId, status },
+  });
+  
+  // Notify user
+  if (roomId) {
+    await Bot.sendTo(roomId, 'An error occurred. Support has been notified.');
+  }
+});
+```
+
+### Distinguish error types
+
+```typescript
+Bot.captureError(async (error) => {
+  const { e, message, roomId, status } = error;
+  
+  // Network/API errors
+  if (status === 429) {
+    if (roomId) {
+      await Bot.sendTo(
+        roomId,
+        'Rate limit exceeded. Please try again in a moment.'
+      );
+    }
+    return;
+  }
+  
+  // Authentication errors
+  if (status === 401 || status === 403) {
+    console.error('Authentication error - check bot token');
+    return;
+  }
+  
+  // File handling errors
+  if (message.includes('file')) {
+    if (roomId) {
+      await Bot.sendTo(
+        roomId,
+        'There was an issue processing the file. Please try again.'
+      );
+    }
+    return;
+  }
+  
+  // Default error message
+  if (roomId) {
+    await Bot.sendTo(roomId, 'Something went wrong. Please try again.');
+  }
+});
+```
+
+## Handling errors in steps
+
+You can also use try-catch within individual steps:
+
+```typescript
+Bot.addStep(async ($) => {
+  try {
+    // Risky operation
+    const result = await externalAPI.call($.text);
+    await $.send(`Result: ${result}`);
+  } catch (error) {
+    console.error('API call failed:', error);
+    await $.send('Sorry, the external service is unavailable.');
+  }
+  return $.next;
+});
+```
+
+## File operation errors
+
+Handle file-related errors gracefully:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.file) {
+    try {
+      const data = await $.file.getData();
+      await $.send('File processed successfully!');
+    } catch (error) {
+      console.error('File processing error:', error);
+      await $.send(
+        'There was an issue processing your file. Please ensure it is a valid format.'
+      );
+    }
+  }
+  return $.next;
+});
+```
+
+From the source code at `~/workspace/source/src/speedybot.ts:354-363`:
+
+```typescript
+try {
+  let fileData: SpeedyFile = await this.peekFile(targetUrl);
+  filePayload = {
+    ...fileData,
+    async getData<T = unknown>() {
+      const { data } = await botInst.getFile(targetUrl);
+      return data as T;
+    },
+  };
+} catch (e) {
+  const err = {
+    message: 'There was an issue obtaining file data',
+    error: e,
+    e,
+    roomId,
+  };
+  this.onReject(err);
+  return false;
+}
+```
+
+## LLM integration errors
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.text) {
+    const rootMsg = await $.reply('Thinking...');
+    
+    try {
+      await OpenAIStream(
+        Bot.getSecret('OPEN_AI_KEY') as string,
+        $.text,
+        async (chunk) => {
+          await $.edit(rootMsg, chunk);
+        }
+      );
+    } catch (error) {
+      console.error('LLM Error:', error);
+      
+      // Check for specific error types
+      if (error.message?.includes('rate limit')) {
+        await $.edit(
+          rootMsg,
+          'The AI service is currently busy. Please try again in a moment.'
+        );
+      } else if (error.message?.includes('authentication')) {
+        await $.edit(
+          rootMsg,
+          'There is a configuration issue. Please contact support.'
+        );
+        console.error('API key issue - check OPEN_AI_KEY');
+      } else {
+        await $.edit(
+          rootMsg,
+          'Sorry, I encountered an error. Please try again.'
+        );
+      }
+    }
+  }
+  return $.next;
+});
+```
+
+## Webhook validation errors
+
+```typescript
+if (signature) {
+  try {
+    const proceed = await validateWebhook(json, secret, signature);
+    if (!proceed) {
+      console.error('Invalid webhook signature');
+      return new Response('Webhook Rejected', { status: 401 });
+    }
+  } catch (error) {
+    console.error('Webhook validation error:', error);
+    return new Response('Validation Error', { status: 500 });
+  }
+}
+```
+
+## Graceful degradation
+
+Provide fallback behavior when features fail:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.text?.includes('search')) {
+    try {
+      const results = await searchService.query($.text);
+      await $.send(`Found ${results.length} results`);
+    } catch (error) {
+      console.error('Search failed:', error);
+      // Fallback to simple response
+      await $.send(
+        'Search is temporarily unavailable. Here are some helpful links instead:'
+      );
+      await $.send('- Documentation: https://docs.example.com');
+      await $.send('- Support: support@example.com');
+    }
+  }
+  return $.next;
+});
+```
+
+## Error notification cards
+
+Use SpeedyCards for better error visibility:
+
+```typescript
+Bot.captureError(async (error) => {
+  const { message, roomId, status } = error;
+  
+  if (roomId) {
+    const errorCard = Bot.errorCard(
+      'Error Occurred',
+      message
+    );
+    
+    await Bot.sendTo(roomId, errorCard);
+  }
+});
+```
+
+Using the built-in `errorCard` method from `~/workspace/source/src/speedybot.ts:775-780`:
+
+```typescript
+public errorCard(title: string, message: string) {
+  return this.card().addBlock(
+    this.card().addTitle(title).addSubtitle(message),
+    { backgroundColor: 'Attention' }
+  );
+}
+```
+
+## Complete error handling example
+
+```typescript
+import { SpeedyBot, SpeedyError } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+// Global error handler
+Bot.captureError(async (error: SpeedyError) => {
+  const { e, message, status, roomId } = error;
+  
+  // Log to monitoring service
+  console.error('Bot Error:', {
+    message,
+    status,
+    roomId,
+    timestamp: new Date().toISOString(),
+  });
+  
+  // Send error monitoring
+  if (process.env.SENTRY_DSN) {
+    // Sentry.captureException(e);
+  }
+  
+  // Notify user if possible
+  if (roomId) {
+    let userMessage = 'An unexpected error occurred.';
+    
+    if (status === 429) {
+      userMessage = 'Too many requests. Please try again in a moment.';
+    } else if (status === 403 || status === 401) {
+      userMessage = 'Authentication error. Please contact support.';
+    } else if (message.includes('file')) {
+      userMessage = 'There was an issue processing the file.';
+    }
+    
+    const errorCard = Bot.errorCard('Error', userMessage);
+    await Bot.sendTo(roomId, errorCard);
+  }
+});
+
+// Steps with error handling
+Bot.addStep(async ($) => {
+  if ($.file) {
+    try {
+      const data = await $.file.getData();
+      await $.send('File processed!');
+    } catch (error) {
+      await $.send('Could not process file. Please try a different format.');
+      throw error; // Will be caught by global handler
+    }
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.text) {
+    try {
+      const result = await externalAPI.process($.text);
+      await $.send(`Result: ${result}`);
+    } catch (error) {
+      console.error('API Error:', error);
+      await $.send('The external service is temporarily unavailable.');
+      // Don't throw - handled locally
+    }
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+## Error handling checklist
+
+- [ ] Global error handler configured with `Bot.captureError()`
+- [ ] User-friendly error messages (no technical jargon)
+- [ ] Errors logged for debugging
+- [ ] Monitoring/alerting integrated
+- [ ] Different error types handled appropriately
+- [ ] Rate limiting errors handled gracefully
+- [ ] File operation errors caught
+- [ ] External API failures have fallbacks
+- [ ] Webhook validation errors handled
+- [ ] Error cards used for better UX
+
+<Info>
+The error handler is your safety net. Always implement it to prevent your bot from silently failing.
+</Info>
+
+<Warning>
+Avoid exposing sensitive error details (API keys, stack traces, internal paths) to end users. Log these securely instead.
+</Warning>

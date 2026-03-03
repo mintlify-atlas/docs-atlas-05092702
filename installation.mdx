@@ -1,0 +1,336 @@
+---
+title: Installation
+description: Install SpeedyBot and set up your development environment
+---
+
+# Installation
+
+SpeedyBot is available as an npm package and can be installed using any modern JavaScript package manager.
+
+## Package managers
+
+Install SpeedyBot using your preferred package manager:
+
+<CodeGroup>
+```bash npm
+npm install speedybot
+```
+
+```bash yarn
+yarn add speedybot
+```
+
+```bash pnpm
+pnpm add speedybot
+```
+
+```bash bun
+bun add speedybot
+```
+</CodeGroup>
+
+## Requirements
+
+- **Node.js**: Version 18.11.0 or higher
+- **WebEx Bot Token**: Create a bot at [developer.webex.com](https://developer.webex.com)
+
+## Project setup
+
+### Initialize a new project
+
+If you're starting from scratch:
+
+```bash
+mkdir my-speedybot
+cd my-speedybot
+npm init -y
+npm install speedybot
+```
+
+### TypeScript configuration
+
+For TypeScript projects, create a `tsconfig.json`:
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "lib": ["ES2020"],
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}
+```
+
+## Quick start with CLI
+
+SpeedyBot includes a powerful CLI tool for scaffolding and managing projects:
+
+```bash
+npx speedybot setup
+```
+
+The CLI provides interactive prompts to:
+
+- Download starter templates
+- Configure environment variables
+- Set up webhooks
+- Install dependencies
+- Boot the project locally
+
+### CLI commands
+
+#### Setup command
+
+Scaffold and configure a new SpeedyBot project:
+
+```bash
+npx speedybot setup --help
+```
+
+<Info>
+  The setup command can automatically install dependencies and start your bot with the `--install` and `--boot` flags.
+</Info>
+
+**Examples:**
+
+```bash
+# Interactive setup
+npx speedybot setup
+
+# Set up default project with auto-install and boot
+npx speedybot setup --project default --install --boot
+
+# Set up with specific environment variables
+npx speedybot setup --project voiceflow-kb -e BOT_TOKEN -e VOICEFLOW_API_KEY --install --boot
+```
+
+#### Token command
+
+Inspect and validate WebEx tokens:
+
+```bash
+npx speedybot token --help
+```
+
+This command helps you:
+- Verify token validity
+- View associated bot information
+- Check token permissions
+
+#### Webhook command
+
+Manage WebEx webhooks:
+
+```bash
+npx speedybot webhook --help
+```
+
+**Common operations:**
+
+```bash
+# List all webhooks
+npx speedybot webhook list
+
+# Create webhooks
+npx speedybot webhook create -w https://example.com/webhook -t YOUR_TOKEN -s YOUR_SECRET
+
+# Remove webhooks
+npx speedybot webhook remove
+```
+
+## Import and usage
+
+### ESM (ES Modules)
+
+SpeedyBot fully supports ES modules:
+
+```ts
+import { SpeedyBot } from "speedybot";
+
+const Bot = new SpeedyBot();
+```
+
+### CommonJS
+
+CommonJS is also supported:
+
+```js
+const { SpeedyBot } = require("speedybot");
+
+const Bot = new SpeedyBot();
+```
+
+## Environment variables
+
+Create a `.env` file in your project root:
+
+```bash .env
+BOT_TOKEN=your_webex_bot_token_here
+WEBHOOK_SECRET=your_webhook_secret_here
+```
+
+<Warning>
+  Never commit your `.env` file to version control. Add it to your `.gitignore` file.
+</Warning>
+
+### Loading environment variables
+
+For Node.js projects, use `dotenv`:
+
+```bash
+npm install dotenv
+```
+
+```ts
+import "dotenv/config";
+import { SpeedyBot } from "speedybot";
+
+const Bot = new SpeedyBot(process.env.BOT_TOKEN);
+```
+
+## Platform-specific setup
+
+### AWS Lambda
+
+For AWS Lambda deployments, SpeedyBot works seamlessly:
+
+```ts
+import { SpeedyBot } from "speedybot";
+import Bot from "./bot";
+
+export const handler = async (event: any) => {
+  const payload = JSON.parse(event.body);
+  await Bot.runMiddleware(payload);
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: "Success" }),
+  };
+};
+```
+
+### Cloudflare Workers
+
+```ts
+import { SpeedyBot } from "speedybot";
+import Bot from "./bot";
+
+export default {
+  async fetch(request: Request, env: any) {
+    const payload = await request.json();
+    await Bot.runMiddleware(payload);
+    return new Response("OK", { status: 200 });
+  },
+};
+```
+
+### Deno
+
+SpeedyBot works with Deno using npm specifiers:
+
+```ts
+import { SpeedyBot } from "npm:speedybot";
+
+const Bot = new SpeedyBot();
+```
+
+### Standard Node.js server
+
+For Express or similar frameworks:
+
+```ts
+import express from "express";
+import { SpeedyBot } from "speedybot";
+import Bot from "./bot";
+
+const app = express();
+app.use(express.json());
+
+app.post("/webhook", async (req, res) => {
+  await Bot.runMiddleware(req.body);
+  res.send("OK");
+});
+
+app.listen(3000, () => {
+  console.log("Bot listening on port 3000");
+});
+```
+
+## Verify installation
+
+Create a simple test file to verify your installation:
+
+```ts test.ts
+import { SpeedyBot } from "speedybot";
+
+const Bot = new SpeedyBot();
+
+Bot.addStep(async ($) => {
+  console.log("SpeedyBot is working!");
+  return $.next;
+});
+
+console.log("✅ SpeedyBot installed successfully");
+```
+
+Run it:
+
+```bash
+ts-node test.ts
+# or
+node test.js
+```
+
+You should see: `✅ SpeedyBot installed successfully`
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build your first bot in minutes
+  </Card>
+  <Card title="Configuration" icon="gear" href="/concepts/webhooks">
+    Configure your bot for production
+  </Card>
+  <Card title="Deployment" icon="cloud" href="/guides/deployment">
+    Deploy to your preferred platform
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/overview">
+    Explore example implementations
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Module not found
+
+If you encounter module resolution issues:
+
+1. Ensure you're using Node.js 18.11.0 or higher
+2. Clear your `node_modules` and reinstall:
+   ```bash
+   rm -rf node_modules package-lock.json
+   npm install
+   ```
+
+### TypeScript errors
+
+If you see TypeScript errors:
+
+1. Ensure your `tsconfig.json` has `"moduleResolution": "node"`
+2. Install TypeScript types: `npm install -D @types/node`
+
+### Token issues
+
+If your bot token isn't working:
+
+1. Verify the token at [developer.webex.com](https://developer.webex.com)
+2. Use the CLI to validate: `npx speedybot token`
+3. Ensure the token has the necessary permissions

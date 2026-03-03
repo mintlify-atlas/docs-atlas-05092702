@@ -1,0 +1,413 @@
+---
+title: LLM integration
+description: Stream LLM responses with token streaming patterns
+---
+
+SpeedyBot makes it easy to integrate Large Language Models (LLMs) with efficient token streaming that provides a smooth user experience.
+
+## Why stream tokens?
+
+LLM responses can take several seconds to complete. Rather than making users wait for the full response, SpeedyBot lets you stream tokens in chunks, creating a more responsive feel.
+
+<Note>
+WebEx allows up to 10 message edits, which SpeedyBot uses to approximate a "streaming" effect similar to ChatGPT or Claude.
+</Note>
+
+## Quick start
+
+Here's a complete example from `~/workspace/source/examples/llm-stream`:
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    npm install speedybot @axflow/models
+    ```
+  </Step>
+  
+  <Step title="Set up your bot">
+    ```typescript ~/workspace/source/examples/llm-stream/settings/bot.ts
+    import { SpeedyBot } from 'speedybot';
+    import { OpenAIStream } from './llm-stream';
+    
+    const Bot = new SpeedyBot<'OPEN_AI_KEY'>();
+    
+    Bot.addStep(async ($) => {
+      if ($.text) {
+        const rootMsg = await $.reply('Thinking...');
+        
+        OpenAIStream(
+          Bot.getSecret('OPEN_AI_KEY') as string,
+          $.text,
+          async (currentChunk, isFinal) => {
+            await $.edit(rootMsg, currentChunk);
+          },
+          {},
+          15 // min words before edit
+        );
+      }
+      return $.next;
+    });
+    
+    export default Bot;
+    ```
+  </Step>
+  
+  <Step title="Create streaming handler">
+    ```typescript ~/workspace/source/examples/llm-stream/settings/llm-stream.ts
+    import { OpenAIChat } from '@axflow/models/openai/chat';
+    import { StreamToIterable } from '@axflow/models/shared';
+    
+    export const OpenAIStream = async (
+      apiKey: string,
+      prompt: string,
+      cb: (currentChunk: string, isFinale: boolean) => void,
+      config: Partial<OpenAIChatTypes.Request> = {},
+      minWords = 15
+    ) => {
+      const stream = await OpenAIChat.stream(
+        {
+          model: config.model ?? 'gpt-4',
+          ...(config ? { ...config } : {}),
+          messages: (config.messages ?? []).concat({
+            role: 'user',
+            content: prompt,
+          }),
+        },
+        { apiKey }
+      );
+      
+      const chatEditor = new ChatResponseEditor({ minWords });
+      for await (const chunk of StreamToIterable(stream)) {
+        chatEditor.incomingChunkHandler(
+          chunk,
+          async (currentChunk: string, isFinale: boolean) => {
+            cb(currentChunk, isFinale);
+          }
+        );
+      }
+    };
+    ```
+  </Step>
+</Steps>
+
+## The ChatResponseEditor pattern
+
+This class manages the edit buffer to optimize message updates:
+
+```typescript ~/workspace/source/examples/llm-stream/settings/llm-stream.ts
+class ChatResponseEditor {
+  private editsDone: number = 0;
+  private maxEdits = 8;
+  private minWords = 5;
+  private _subCharBuffer = '';
+  private charBuffer = '';
+  private isFinished = false;
+  
+  constructor(config?: { maxEdits?: number; minWords?: number }) {
+    this.maxEdits = config?.maxEdits ?? 8;
+    this.minWords = config?.minWords ?? 5;
+  }
+  
+  public incomingChunkHandler = (
+    chunk: Chunk,
+    callback: (chunk: string, isFinished?: boolean) => unknown
+  ) => {
+    const content = chunk.choices[0]?.delta?.content || '';
+    this.charBuffer += content;
+    this._subCharBuffer += content;
+    
+    if (!this.isFinished) {
+      this.isFinished = chunk.choices[0]?.finish_reason === 'stop';
+    }
+    
+    const numWords = this._subCharBuffer.split(' ').length;
+    if (
+      this.isFinished ||
+      (this.editsDone < this.maxEdits &&
+        content.length &&
+        numWords >= this.minWords)
+    ) {
+      callback(this.charBuffer, this.isFinished);
+      this.editsDone++;
+      this._subCharBuffer = '';
+    }
+  };
+}
+```
+
+<Info>
+The `minWords` parameter controls how many words accumulate before triggering an edit. Higher values = fewer edits but chunkier updates.
+</Info>
+
+## Using different LLM providers
+
+### Anthropic (Claude)
+
+```typescript
+import { AnthropicChat } from '@axflow/models/anthropic/chat';
+import { StreamToIterable } from '@axflow/models/shared';
+
+export const AnthropicStream = async (
+  apiKey: string,
+  prompt: string,
+  cb: (chunk: string, isFinale: boolean) => void
+) => {
+  const stream = await AnthropicChat.stream(
+    {
+      model: 'claude-3-opus-20240229',
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    },
+    { apiKey }
+  );
+  
+  const editor = new ChatResponseEditor({ minWords: 15 });
+  for await (const chunk of StreamToIterable(stream)) {
+    editor.incomingChunkHandler(chunk, cb);
+  }
+};
+```
+
+### Custom provider
+
+```typescript
+import { StreamingJsonResponse, StreamToIterable } from '@axflow/models/shared';
+
+export const CustomStream = async (
+  endpoint: string,
+  prompt: string,
+  cb: (chunk: string, isFinale: boolean) => void
+) => {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  
+  const stream = StreamingJsonResponse(response, (data) => data);
+  
+  const editor = new ChatResponseEditor();
+  for await (const chunk of StreamToIterable(stream)) {
+    editor.incomingChunkHandler(chunk, cb);
+  }
+};
+```
+
+## Adding conversation context
+
+Maintain conversation history for multi-turn dialogues:
+
+```typescript
+type Message = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+const conversationHistory = new Map<string, Message[]>();
+
+Bot.addStep(async ($) => {
+  if ($.text) {
+    const userId = $.author.id;
+    const history = conversationHistory.get(userId) || [];
+    
+    // Add user message to history
+    history.push({
+      role: 'user',
+      content: $.text,
+    });
+    
+    const rootMsg = await $.reply('Thinking...');
+    let fullResponse = '';
+    
+    await OpenAIStream(
+      Bot.getSecret('OPEN_AI_KEY') as string,
+      $.text,
+      async (chunk, isFinal) => {
+        fullResponse = chunk;
+        await $.edit(rootMsg, chunk);
+        
+        if (isFinal) {
+          // Add assistant response to history
+          history.push({
+            role: 'assistant',
+            content: fullResponse,
+          });
+          conversationHistory.set(userId, history);
+        }
+      },
+      {
+        messages: history, // Include conversation history
+      },
+      15
+    );
+  }
+  return $.next;
+});
+```
+
+## Handling errors gracefully
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.text) {
+    const rootMsg = await $.reply('Thinking...');
+    
+    try {
+      await OpenAIStream(
+        Bot.getSecret('OPEN_AI_KEY') as string,
+        $.text,
+        async (chunk, isFinal) => {
+          await $.edit(rootMsg, chunk);
+        },
+        {},
+        15
+      );
+    } catch (error) {
+      await $.edit(
+        rootMsg,
+        'Sorry, I encountered an error processing your request. Please try again.'
+      );
+      console.error('LLM Error:', error);
+    }
+  }
+  return $.next;
+});
+```
+
+## Access control
+
+Restrict LLM access to specific users:
+
+```typescript ~/workspace/source/examples/llm-stream/settings/bot.ts
+Bot.addStep(async ($) => {
+  const email = $.author.email;
+  const allowed = ['user@company.com', 'admin@company.com'];
+  
+  if (allowed.includes(email)) {
+    return $.next;
+  } else {
+    const card = $.card()
+      .addTitle('No access :/')
+      .addText(
+        "Sorry, you don't have access to this agent",
+        { backgroundColor: 'red' }
+      )
+      .addTextarea('Request for access', 'access_request');
+    
+    await $.send(card);
+    return $.end;
+  }
+});
+```
+
+## System prompts and configuration
+
+Customize the LLM behavior with system prompts:
+
+```typescript
+const systemPrompt = `You are a helpful assistant specialized in technical support.
+Provide clear, concise answers. If you don't know something, say so.`;
+
+Bot.addStep(async ($) => {
+  if ($.text) {
+    const rootMsg = await $.reply('Thinking...');
+    
+    await OpenAIStream(
+      Bot.getSecret('OPEN_AI_KEY') as string,
+      $.text,
+      async (chunk) => {
+        await $.edit(rootMsg, chunk);
+      },
+      {
+        model: 'gpt-4',
+        temperature: 0.7,
+        max_tokens: 500,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+        ],
+      },
+      15
+    );
+  }
+  return $.next;
+});
+```
+
+## Complete example with features
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+import { OpenAIStream } from './llm-stream';
+
+const Bot = new SpeedyBot<'OPEN_AI_KEY'>();
+
+const conversationHistory = new Map();
+const allowedUsers = ['user@company.com'];
+
+// Clear command
+Bot.exact('$clear', async ($) => {
+  conversationHistory.delete($.author.id);
+  await $.clearScreen();
+  await $.send('Conversation history cleared!');
+  return $.end;
+});
+
+// Access control
+Bot.addStep(async ($) => {
+  if (!allowedUsers.includes($.author.email)) {
+    await $.send('Sorry, you do not have access to this bot.');
+    return $.end;
+  }
+  return $.next;
+});
+
+// Main LLM handler
+Bot.addStep(async ($) => {
+  if ($.text) {
+    const userId = $.author.id;
+    const history = conversationHistory.get(userId) || [];
+    
+    history.push({ role: 'user', content: $.text });
+    
+    const rootMsg = await $.reply('Thinking...');
+    let fullResponse = '';
+    
+    try {
+      await OpenAIStream(
+        Bot.getSecret('OPEN_AI_KEY') as string,
+        $.text,
+        async (chunk, isFinal) => {
+          fullResponse = chunk;
+          await $.edit(rootMsg, chunk);
+          
+          if (isFinal) {
+            history.push({ role: 'assistant', content: fullResponse });
+            conversationHistory.set(userId, history.slice(-10)); // Keep last 10
+          }
+        },
+        {
+          model: 'gpt-4',
+          messages: history,
+        },
+        15
+      );
+    } catch (error) {
+      await $.edit(rootMsg, 'Sorry, an error occurred. Please try again.');
+    }
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+<Warning>
+Be mindful of API rate limits and costs. Consider implementing usage tracking and throttling for production deployments.
+</Warning>

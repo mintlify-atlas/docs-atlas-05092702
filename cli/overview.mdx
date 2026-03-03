@@ -1,0 +1,83 @@
+---
+title: CLI overview
+description: SpeedyBot's command-line interface for project setup, token inspection, and webhook management
+---
+
+SpeedyBot includes a powerful CLI that helps you scaffold projects, inspect tokens, and manage webhooks. The CLI is designed to make bot development fast and efficient.
+
+## Installation
+
+You can run the SpeedyBot CLI without installing it using `npm init` or `npx`:
+
+```bash
+# Using npm init
+npm init speedybot@latest
+
+# Using npx
+npx -y speedybot
+```
+
+<Info>
+The `-y` flag automatically accepts prompts, making the command non-interactive.
+</Info>
+
+## Available commands
+
+The SpeedyBot CLI provides three main commands:
+
+### setup
+
+Download, scaffold, and boot SpeedyBot projects locally. Supports multiple project templates and can automatically install dependencies and start the development server.
+
+```bash
+npx -y speedybot setup
+```
+
+Learn more in the [setup command reference](/cli/setup).
+
+### token
+
+Inspect a WebEx token to see if it's valid and view any associated agents.
+
+```bash
+npx -y speedybot token
+```
+
+Learn more in the [token command reference](/cli/token).
+
+### webhook
+
+Manage webhooks for your bot - create, list, and remove webhooks associated with a token.
+
+```bash
+npx -y speedybot webhook list
+```
+
+Learn more in the [webhook command reference](/cli/webhook).
+
+## Getting help
+
+Add the `--help` flag to any command to see detailed usage information:
+
+```bash
+npx -y speedybot --help
+npx -y speedybot setup --help
+npx -y speedybot token --help
+npx -y speedybot webhook --help
+```
+
+## Version targeting
+
+You can target specific versions of SpeedyBot:
+
+```bash
+# Use latest version
+npx -y speedybot@latest setup
+
+# Use specific version range
+npx -y speedybot@^2.0.0 setup
+```
+
+<Note>
+The CLI is built into the SpeedyBot package and requires Node.js 18.11.0 or higher.
+</Note>

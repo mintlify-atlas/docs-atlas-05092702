@@ -1,0 +1,670 @@
+---
+title: SpeedyCard class
+description: Builder for creating rich Adaptive Cards
+---
+
+The `SpeedyCard` class provides a fluent interface for building Adaptive Cards. All methods return `this` for method chaining.
+
+## Constructor
+
+```typescript
+const card = new SpeedyCard()
+```
+
+Creates a new card builder instance.
+
+## Content methods
+
+### addTitle
+
+Adds a title to the card.
+
+```typescript
+card.addTitle(title: string): SpeedyCard
+```
+
+<ParamField path="title" type="string" required>
+  Title text
+</ParamField>
+
+### addSubtitle
+
+Adds a subtitle to the card.
+
+```typescript
+card.addSubtitle(subTitle: string): SpeedyCard
+```
+
+<ParamField path="subTitle" type="string" required>
+  Subtitle text
+</ParamField>
+
+### addText
+
+Adds formatted text to the card.
+
+```typescript
+card.addText(text: string, config?: {
+  bold?: boolean;
+  size?: SizeChoices;
+  align?: AlignmentChoices;
+  color?: ColorChoices;
+  backgroundColor?: ColorChoices;
+  vertAlign?: VAlignChoices;
+}): SpeedyCard
+```
+
+<ParamField path="text" type="string" required>
+  Text content (supports markdown)
+</ParamField>
+
+<ParamField path="config.bold" type="boolean" optional>
+  Make text bold
+</ParamField>
+
+<ParamField path="config.size" type="SizeChoices" optional>
+  Text size: "Small", "Medium", "Large", "ExtraLarge"
+</ParamField>
+
+<ParamField path="config.align" type="AlignmentChoices" optional>
+  Horizontal alignment: "Left", "Center", "Right"
+</ParamField>
+
+<ParamField path="config.color" type="ColorChoices" optional>
+  Text color: "Default", "Dark", "Light", "Accent", "Good", "Warning", "Attention", "blue", "red", "green", "yellow"
+</ParamField>
+
+<ParamField path="config.backgroundColor" type="ColorChoices" optional>
+  Background color (same options as color)
+</ParamField>
+
+<ParamField path="config.vertAlign" type="VAlignChoices" optional>
+  Vertical alignment: "Top", "Center", "Bottom"
+</ParamField>
+
+**Example:**
+
+```typescript
+card.addText('Important message', {
+  bold: true,
+  size: 'Large',
+  color: 'Attention',
+  align: 'Center'
+});
+```
+
+### addImage
+
+Adds an image to the card.
+
+```typescript
+card.addImage(url: string, config?: {
+  size?: SizeChoices;
+  align?: AlignmentChoices;
+  targetURL?: string;
+}): SpeedyCard
+```
+
+<ParamField path="url" type="string" required>
+  Image URL
+</ParamField>
+
+<ParamField path="config.size" type="SizeChoices" optional>
+  Image size (default: "ExtraLarge")
+</ParamField>
+
+<ParamField path="config.align" type="AlignmentChoices" optional>
+  Alignment (default: "Center")
+</ParamField>
+
+<ParamField path="config.targetURL" type="string" optional>
+  URL to open when image is clicked
+</ParamField>
+
+### addLink
+
+Adds a clickable link.
+
+```typescript
+card.addLink(url: string, label?: string): SpeedyCard
+```
+
+<ParamField path="url" type="string" required>
+  Target URL
+</ParamField>
+
+<ParamField path="label" type="string" optional>
+  Link text (defaults to URL)
+</ParamField>
+
+### addLinkButton
+
+Adds a button that opens a URL.
+
+```typescript
+card.addLinkButton(url: string, label?: string): SpeedyCard
+```
+
+<ParamField path="url" type="string" required>
+  Target URL
+</ParamField>
+
+<ParamField path="label" type="string" optional>
+  Button text (defaults to URL)
+</ParamField>
+
+### addTable
+
+Adds a table of key-value pairs.
+
+```typescript
+card.addTable(
+  input: (string | number)[][] | { [key: string]: string | number },
+  separator?: boolean
+): SpeedyCard
+```
+
+<ParamField path="input" type="array | object" required>
+  Array of [key, value] pairs or object with key-value pairs
+</ParamField>
+
+<ParamField path="separator" type="boolean" optional>
+  Show separator line above table
+</ParamField>
+
+**Example:**
+
+```typescript
+// Array format
+card.addTable([
+  ['Name', 'SpeedyBot'],
+  ['Version', '2.0.0'],
+  ['Status', 'Active']
+]);
+
+// Object format
+card.addTable({
+  'Name': 'SpeedyBot',
+  'Version': '2.0.0',
+  'Status': 'Active'
+});
+```
+
+### addHeader
+
+Adds a styled header with optional icon.
+
+```typescript
+card.addHeader(text: string, config?: HeaderConfig): SpeedyCard
+```
+
+<ParamField path="text" type="string" required>
+  Header text
+</ParamField>
+
+<ParamField path="config.iconURL" type="string" optional>
+  Icon URL or emoji
+</ParamField>
+
+<ParamField path="config.backgroundColor" type="ColorChoices" optional>
+  Background color
+</ParamField>
+
+<ParamField path="config.rtl" type="boolean" optional>
+  Right-to-left layout
+</ParamField>
+
+<ParamField path="config.iconAlignment" type="AlignmentChoices" optional>
+  Icon alignment
+</ParamField>
+
+<ParamField path="config.iconWidth" type="number" optional>
+  Icon width in pixels
+</ParamField>
+
+<ParamField path="config.iconRound" type="boolean" optional>
+  Make icon circular
+</ParamField>
+
+<ParamField path="config.textSize" type="SizeChoices" optional>
+  Text size
+</ParamField>
+
+<ParamField path="config.textAlign" type="AlignmentChoices" optional>
+  Text alignment
+</ParamField>
+
+<ParamField path="config.textColor" type="ColorChoices" optional>
+  Text color
+</ParamField>
+
+**Example:**
+
+```typescript
+card.addHeader('SpeedyBot Dashboard', {
+  iconURL: 'https://example.com/logo.png',
+  iconRound: true,
+  backgroundColor: 'Accent'
+});
+```
+
+### addBlock
+
+Adds a content block with styling.
+
+```typescript
+card.addBlock(
+  content: string | SpeedyCard,
+  config?: {
+    backgroundColor?: ColorChoices;
+    vertAlign?: VAlignChoices;
+    separator?: boolean;
+  }
+): SpeedyCard
+```
+
+<ParamField path="content" type="string | SpeedyCard" required>
+  Text or nested card
+</ParamField>
+
+<ParamField path="config.backgroundColor" type="ColorChoices" optional>
+  Block background color
+</ParamField>
+
+<ParamField path="config.vertAlign" type="VAlignChoices" optional>
+  Vertical alignment
+</ParamField>
+
+<ParamField path="config.separator" type="boolean" optional>
+  Show separator line
+</ParamField>
+
+## Interactive elements
+
+### addChip
+
+Adds a single chip (quick action button).
+
+```typescript
+card.addChip(
+  payload: string | { title: string; value?: string },
+  id?: string
+): SpeedyCard
+```
+
+<ParamField path="payload" type="string | object" required>
+  Chip label or object with title and value
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Custom field ID for the chip value
+</ParamField>
+
+### addChips
+
+Adds multiple chips.
+
+```typescript
+card.addChips(
+  chips: (string | { title: string; value?: string })[],
+  id?: string
+): SpeedyCard
+```
+
+<ParamField path="chips" type="array" required>
+  Array of chip labels or objects
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Custom field ID
+</ParamField>
+
+**Example:**
+
+```typescript
+card.addChips([
+  'help',
+  'docs',
+  { title: 'Contact Support', value: 'support' }
+]);
+```
+
+### addButton
+
+Adds a submit button.
+
+```typescript
+card.addButton(
+  label: string,
+  id?: string,
+  attachedData?: string | { [key: string]: number | string | boolean }
+): SpeedyCard
+```
+
+<ParamField path="label" type="string" required>
+  Button text
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Field ID (default: "button_result")
+</ParamField>
+
+<ParamField path="attachedData" type="string | object" optional>
+  Data to attach to submission
+</ParamField>
+
+### addDeleteButton
+
+Adds a button that deletes the card when clicked.
+
+```typescript
+card.addDeleteButton(label?: string): SpeedyCard
+```
+
+<ParamField path="label" type="string" optional>
+  Button text (default: "🔥 Destroy")
+</ParamField>
+
+### addSubcard
+
+Adds a nested card that appears on button click.
+
+```typescript
+card.addSubcard(
+  card: SpeedyCard | Card,
+  textLabel?: string
+): SpeedyCard
+```
+
+<ParamField path="card" type="SpeedyCard | Card" required>
+  Nested card
+</ParamField>
+
+<ParamField path="textLabel" type="string" optional>
+  Button text to reveal the subcard
+</ParamField>
+
+## Input elements
+
+### addTextInput
+
+Adds a single-line text input.
+
+```typescript
+card.addTextInput(
+  placeholder: string,
+  id?: string
+): SpeedyCard
+```
+
+<ParamField path="placeholder" type="string" required>
+  Placeholder text
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Field ID (default: "addTextInput_result")
+</ParamField>
+
+### addTextarea
+
+Adds a multi-line text input.
+
+```typescript
+card.addTextarea(
+  placeholder: string,
+  id?: string
+): SpeedyCard
+```
+
+<ParamField path="placeholder" type="string" required>
+  Placeholder text
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Field ID (default: "addTextarea_result")
+</ParamField>
+
+### addPickerDropdown
+
+Adds a dropdown picker.
+
+```typescript
+card.addPickerDropdown(
+  choices: (string | number | { title: string; value: number | string })[],
+  id?: string
+): SpeedyCard
+```
+
+<ParamField path="choices" type="array" required>
+  Array of choices
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Field ID (default: "addPickerDropdown_result")
+</ParamField>
+
+**Example:**
+
+```typescript
+card.addPickerDropdown([
+  { title: 'High Priority', value: 'high' },
+  { title: 'Medium Priority', value: 'medium' },
+  { title: 'Low Priority', value: 'low' }
+], 'priority');
+```
+
+### addSingleSelect
+
+Adds a single-selection radio button list.
+
+```typescript
+card.addSingleSelect(
+  choices: (string | number)[] | { title: string; value: string }[],
+  id?: string
+): SpeedyCard
+```
+
+<ParamField path="choices" type="array" required>
+  Array of choices
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Field ID (default: "addSingleSelectresult")
+</ParamField>
+
+### addMultiSelect
+
+Adds a multi-selection checkbox list.
+
+```typescript
+card.addMultiSelect(
+  choices: (string | number)[] | { title: string; value: string }[],
+  id?: string
+): SpeedyCard
+```
+
+<ParamField path="choices" type="array" required>
+  Array of choices
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Field ID (default: "addMultiSelect_result")
+</ParamField>
+
+### addPickerDate
+
+Adds a date picker.
+
+```typescript
+card.addPickerDate(
+  textLabel: string,
+  id?: string
+): SpeedyCard
+```
+
+<ParamField path="textLabel" type="string" required>
+  Label text
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Field ID (default: "addPickerDate_result")
+</ParamField>
+
+### addPickerTime
+
+Adds a time picker.
+
+```typescript
+card.addPickerTime(
+  textLabel: string,
+  id?: string
+): SpeedyCard
+```
+
+<ParamField path="textLabel" type="string" required>
+  Label text
+</ParamField>
+
+<ParamField path="id" type="string" optional>
+  Field ID (default: "addPickerTime_result")
+</ParamField>
+
+## Data attachment
+
+### attachData
+
+Attaches static data to the card submission.
+
+```typescript
+card.attachData(payload: AttachedData): SpeedyCard
+```
+
+<ParamField path="payload" type="AttachedData" required>
+  Data object to attach
+</ParamField>
+
+**Example:**
+
+```typescript
+card.attachData({
+  action: 'create_ticket',
+  userId: '12345',
+  timestamp: Date.now()
+});
+```
+
+## Styling methods
+
+### setBackgroundImage
+
+Sets a background image for the card.
+
+```typescript
+card.setBackgroundImage(url: string): SpeedyCard
+```
+
+<ParamField path="url" type="string" required>
+  Background image URL
+</ParamField>
+
+### setSubmitButtonTitle
+
+Customizes the submit button text.
+
+```typescript
+card.setSubmitButtonTitle(label: string): SpeedyCard
+```
+
+<ParamField path="label" type="string" required>
+  Submit button text
+</ParamField>
+
+## Survey builder
+
+### survey
+
+Creates a survey card with multiple questions.
+
+```typescript
+card.survey(
+  questions: SurveyQuestion[],
+  title?: string
+): SpeedyCard
+```
+
+<ParamField path="questions" type="SurveyQuestion[]" required>
+  Array of survey questions
+</ParamField>
+
+<ParamField path="title" type="string" optional>
+  Survey title (default: "📝 Survey")
+</ParamField>
+
+**Example:**
+
+```typescript
+const surveyCard = new SpeedyCard().survey([
+  {
+    type: 'text',
+    question: 'What is your name?',
+    id: 'name'
+  },
+  {
+    type: 'single-select',
+    question: 'How satisfied are you?',
+    choices: ['Very satisfied', 'Satisfied', 'Neutral', 'Dissatisfied'],
+    id: 'satisfaction'
+  },
+  {
+    type: 'textarea',
+    question: 'Additional comments?',
+    id: 'comments'
+  }
+], 'Customer Feedback');
+```
+
+## Card generation
+
+### build
+
+Builds the final card JSON.
+
+```typescript
+card.build(): Card
+```
+
+**Returns:** Adaptive Card JSON specification
+
+### needsSubmit
+
+Checks if the card requires a submit button.
+
+```typescript
+card.needsSubmit(): boolean
+```
+
+**Returns:** `true` if card has input fields
+
+## Complete example
+
+```typescript
+const card = new SpeedyCard()
+  .addHeader('Task Manager', {
+    iconURL: '✅',
+    backgroundColor: 'Accent'
+  })
+  .addTitle('Create New Task')
+  .addText('Fill out the form below')
+  .addTextInput('Task name', 'taskName')
+  .addTextarea('Description', 'description')
+  .addPickerDropdown([
+    { title: 'High', value: 'high' },
+    { title: 'Medium', value: 'medium' },
+    { title: 'Low', value: 'low' }
+  ], 'priority')
+  .addPickerDate('Due date', 'dueDate')
+  .setSubmitButtonTitle('Create Task')
+  .attachData({ action: 'create_task' });
+
+await Bot.sendTo('user@example.com', card);
+```

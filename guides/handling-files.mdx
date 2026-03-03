@@ -1,0 +1,243 @@
+---
+title: Handling files
+description: Upload and process files with SpeedyFileUtils
+---
+
+SpeedyBot makes it easy to handle file uploads from users and send files back to them.
+
+## Receiving file uploads
+
+When a user uploads a file, SpeedyBot automatically detects it and provides a `$.file` object with file metadata and helper methods.
+
+### File metadata
+
+The `$.file` object contains useful information about the uploaded file:
+
+```typescript ~/workspace/source/src/speedybot.ts
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const { name, extension, contentType, bytes } = $.file;
+    await $.send(
+      `You uploaded "${name}", a *.${extension} file [${contentType}]`
+    );
+  }
+  return $.next;
+});
+```
+
+### Getting file contents
+
+Use the `getData()` method to fetch the actual file contents:
+
+<CodeGroup>
+
+```typescript JSON files
+Bot.addStep(async ($) => {
+  if ($.file) {
+    // Fetch raw bytes/data
+    const fileData = await $.file.getData();
+    
+    // For JSON files, the data is automatically parsed
+    console.log('File contents:', fileData);
+  }
+  return $.next;
+});
+```
+
+```typescript Binary files
+Bot.addStep(async ($) => {
+  if ($.file && $.file.extension === 'pdf') {
+    // Get as ArrayBuffer for binary files
+    const pdfData = await $.file.getData<ArrayBuffer>();
+    
+    // Process the binary data or send to external service
+    await processPDF(pdfData);
+  }
+  return $.next;
+});
+```
+
+</CodeGroup>
+
+<Note>
+The `getData()` method returns different types based on the file's content type:
+- **JSON files**: Automatically parsed as objects
+- **Text files**: Returned as strings
+- **Binary files** (images, PDFs, etc.): Returned as ArrayBuffer
+</Note>
+
+## Handling image uploads
+
+SpeedyBot provides a convenient `onCamera` handler specifically for image files:
+
+```typescript
+Bot.onCamera(async ($) => {
+  const imageData = await $.file.getData<ArrayBuffer>();
+  
+  await $.send('Processing your image...');
+  
+  // Send to vision API or process locally
+  const result = await analyzeImage(imageData);
+  
+  await $.send(`Analysis: ${result}`);
+  return $.end;
+});
+```
+
+By default, `onCamera` handles: `png`, `jpg`, `jpeg`. You can specify additional formats:
+
+```typescript
+Bot.onCamera(async ($) => {
+  // Handle image
+  return $.end;
+}, ['webp', 'gif', 'bmp']);
+```
+
+## Sending files to users
+
+You can send data to users as downloadable files using `$.sendFile()` or `Bot.sendFileTo()`.
+
+### Send JSON data
+
+```typescript
+Bot.addStep(async ($) => {
+  const data = {
+    userId: $.author.id,
+    timestamp: new Date().toISOString(),
+    metrics: { messages: 42, cards: 7 }
+  };
+  
+  // Send as downloadable *.json file
+  await $.sendFile(data, 'json');
+  
+  return $.next;
+});
+```
+
+### Send HTML reports
+
+```typescript
+const makeHTML = (title: string, data: any) => {
+  return `
+    <html>
+      <head><title>${title}</title></head>
+      <body>
+        <h1>${title}</h1>
+        <pre>${JSON.stringify(data, null, 2)}</pre>
+      </body>
+    </html>
+  `;
+};
+
+Bot.contains('report', async ($) => {
+  const reportData = $.debug();
+  const html = makeHTML(`Report for ${$.author.name}`, reportData);
+  
+  await $.sendFile(html, 'html');
+  return $.end;
+});
+```
+
+### Send with custom filename
+
+```typescript
+Bot.addStep(async ($) => {
+  const data = { status: 'complete' };
+  
+  // Specify custom filename
+  await $.sendFile(data, 'export-2026-03-03.json');
+  
+  return $.next;
+});
+```
+
+## Fetching external files
+
+Use `$.getFile()` to download files from external URLs:
+
+```typescript
+Bot.contains('fetch', async ($) => {
+  const url = 'https://example.com/data.json';
+  const file = await $.getFile(url);
+  
+  const data = await file.getData();
+  await $.send(`Fetched: ${JSON.stringify(data)}`);
+  
+  return $.end;
+});
+```
+
+## Complete file handling example
+
+```typescript ~/workspace/source/examples/speedybot-starter/settings/bot.ts
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+// Handle file uploads
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const { name, extension, contentType, bytes } = $.file;
+    
+    await $.send(`Received: ${name} (${bytes} bytes)`);
+    
+    // Process based on file type
+    if (extension === 'json') {
+      const data = await $.file.getData();
+      await $.send(`JSON contents: ${JSON.stringify(data)}`);
+    }
+    
+    if (extension === 'txt') {
+      const text = await $.file.getData<string>();
+      await $.send(`Text contents: ${text}`);
+    }
+    
+    if (['png', 'jpg', 'jpeg'].includes(extension)) {
+      const imageData = await $.file.getData<ArrayBuffer>();
+      await $.send('Image received! Processing...');
+      // Send to vision API, etc.
+    }
+    
+    return $.end;
+  }
+  return $.next;
+});
+
+// Send files on command
+Bot.exact('export', async ($) => {
+  const exportData = {
+    user: $.author.email,
+    exported: new Date().toISOString(),
+    data: $.debug()
+  };
+  
+  await $.sendFile(exportData, 'json');
+  await $.send('Export complete!');
+  
+  return $.end;
+});
+
+export default Bot;
+```
+
+## SpeedyFileUtils type reference
+
+From `~/workspace/source/src/types.ts`:
+
+```typescript
+export type SpeedyFile = {
+  url: string;
+  name: string;
+  extension: string;
+  contentType: string;
+  bytes: number;
+};
+
+export type SpeedyFileUtils = SpeedyFile & {
+  getData<T = unknown>(): Promise<T>;
+};
+```
+
+<Warning>
+File uploads have size limits imposed by the WebEx platform. Ensure your bot handles large files appropriately or provides feedback to users about size restrictions.
+</Warning>

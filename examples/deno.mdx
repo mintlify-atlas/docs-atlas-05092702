@@ -1,0 +1,433 @@
+---
+title: Deno Deploy
+description: Deploy SpeedyBot to Deno's edge runtime with TypeScript-first development
+---
+
+Deno Deploy runs your bot on a global edge network with fast cold starts and native TypeScript support. It's ideal for developers who prefer modern runtime features and TypeScript without build steps.
+
+## Prerequisites
+
+- WebEx account ([sign up](https://developer.webex.com/signup))
+- Deno Deploy account ([sign up](https://deno.com/deploy))
+
+## Quick start
+
+<Steps>
+  <Step title="Get your bot token">
+    - Existing bot: [developer.webex.com/my-apps](https://developer.webex.com/my-apps)
+    - New bot: [developer.webex.com/my-apps/new/bot](https://developer.webex.com/my-apps/new/bot)
+
+    Save the token - you'll need it soon.
+  </Step>
+
+  <Step title="Create a new playground">
+    In your Deno Deploy dashboard, click the blue **New Playground** button.
+  </Step>
+
+  <Step title="Add bot code">
+    Copy the code from the [example repository](https://github.com/valgaze/speedybot/blob/main/examples/deno/index.ts) and paste it into the playground editor.
+
+    ```typescript index.ts
+    import { SpeedyBot } from 'npm:speedybot@latest';
+
+    const token = Deno.env.get('token') || '';
+    const webhookSecret = Deno.env.get('webhookSecret');
+
+    const Bot = new SpeedyBot(token);
+
+    // Add your bot logic
+    Bot.addStep(async ($) => {
+      if ($.text === 'ping') {
+        await $.reply('pong');
+      }
+      return $.next;
+    });
+
+    Bot.addStep(async ($) => {
+      const card = $.card()
+        .addTitle('SpeedyBot on Deno')
+        .addText('Running on the edge!');
+      await $.send(card);
+      return $.end;
+    });
+
+    Deno.serve(async (req: Request) => {
+      if (req.method === 'POST') {
+        const webhook = await req.json();
+        
+        // Validate signature if secret is set
+        if (webhookSecret) {
+          const signature = req.headers.get('x-spark-signature') || '';
+          const payload = JSON.stringify(webhook);
+          
+          const isValid = await validateSignature(
+            payload,
+            webhookSecret,
+            signature
+          );
+          
+          if (!isValid) {
+            return new Response('Invalid signature', { status: 401 });
+          }
+        }
+        
+        await Bot.runMiddleware(webhook);
+        return new Response('OK');
+      }
+      
+      return new Response('SpeedyBot Deno Deploy');
+    });
+
+    async function validateSignature(
+      payload: string,
+      secret: string,
+      signature: string
+    ): Promise<boolean> {
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(secret),
+        { name: 'HMAC', hash: 'SHA-1' },
+        false,
+        ['sign']
+      );
+      
+      const sig = await crypto.subtle.sign(
+        'HMAC',
+        key,
+        encoder.encode(payload)
+      );
+      
+      const hexSignature = Array.from(new Uint8Array(sig))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      
+      return hexSignature === signature;
+    }
+    ```
+  </Step>
+
+  <Step title="Configure secrets">
+    In your playground settings:
+    1. Click **Settings**
+    2. Add secret `token` with your bot token
+    3. Add secret `webhookSecret` with your chosen secret
+    4. Click **Save** for each secret
+
+    <Warning>
+    Make sure to save each secret before moving to the next one.
+    </Warning>
+  </Step>
+
+  <Step title="Get your playground URL">
+    Your playground gets a unique URL like:
+    ```
+    https://noisy-bongodrum-75.deno.dev
+    ```
+
+    Copy this URL for webhook registration.
+  </Step>
+
+  <Step title="Register webhook">
+    Use [SpeedyBot Garage](https://speedybot.js.org/garage):
+    1. Enter your bot token
+    2. Go to Webhooks tab
+    3. Add your Deno Deploy URL
+    4. Set the webhook secret (same as in settings)
+  </Step>
+</Steps>
+
+## Project structure
+
+For production deployments, organize your code properly:
+
+```bash
+.
+├── bot.ts          # Bot logic
+├── index.ts        # HTTP handler
+├── deno.json       # Deno configuration
+└── .env            # Local environment (gitignored)
+```
+
+### Bot logic file
+
+```typescript bot.ts
+import { SpeedyBot } from 'npm:speedybot@latest';
+
+export function setupBot(bot: SpeedyBot) {
+  bot.addStep(async ($) => {
+    if ($.text === 'hello') {
+      await $.reply(`Hi ${$.author.name}!`);
+    }
+    return $.next;
+  });
+
+  bot.addStep(async ($) => {
+    // Handle file uploads
+    if ($.file) {
+      await $.reply(`Got file: ${$.file.name}`);
+    }
+    return $.next;
+  });
+
+  bot.captureError((error) => {
+    console.error('Bot error:', error);
+  });
+}
+```
+
+### HTTP handler
+
+```typescript index.ts
+import { SpeedyBot } from 'npm:speedybot@latest';
+import { setupBot } from './bot.ts';
+
+const token = Deno.env.get('BOT_TOKEN') || '';
+const webhookSecret = Deno.env.get('WEBHOOK_SECRET');
+
+const bot = new SpeedyBot(token);
+setupBot(bot);
+
+Deno.serve(async (req: Request) => {
+  const url = new URL(req.url);
+  
+  // Health check endpoint
+  if (url.pathname === '/health') {
+    return new Response('OK', { status: 200 });
+  }
+  
+  // Webhook endpoint
+  if (req.method === 'POST') {
+    try {
+      const webhook = await req.json();
+      
+      // Validate signature
+      if (webhookSecret) {
+        const signature = req.headers.get('x-spark-signature');
+        if (!signature) {
+          return new Response('No signature', { status: 401 });
+        }
+        
+        const isValid = bot.validateSignature(
+          JSON.stringify(webhook),
+          webhookSecret,
+          signature
+        );
+        
+        if (!isValid) {
+          return new Response('Invalid signature', { status: 401 });
+        }
+      }
+      
+      await bot.runMiddleware(webhook);
+      return new Response('OK', { status: 200 });
+    } catch (error) {
+      console.error('Error:', error);
+      return new Response('Error', { status: 500 });
+    }
+  }
+  
+  return new Response('SpeedyBot on Deno');
+});
+```
+
+## Configuration
+
+Create `deno.json` for project settings:
+
+```json deno.json
+{
+  "tasks": {
+    "dev": "deno run --allow-net --allow-env --watch index.ts",
+    "start": "deno run --allow-net --allow-env index.ts"
+  },
+  "imports": {
+    "speedybot": "npm:speedybot@latest"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window", "dom"]
+  }
+}
+```
+
+## Local development
+
+Create `.env` for local secrets:
+
+```bash .env
+BOT_TOKEN=your_token_here
+WEBHOOK_SECRET=your_secret_here
+```
+
+Run locally with environment variables:
+
+```bash
+# Using .env file
+deno task dev
+
+# Or specify directly
+BOT_TOKEN=xxx WEBHOOK_SECRET=yyy deno run --allow-net --allow-env index.ts
+```
+
+<Note>
+Add `.env` to `.gitignore` to keep secrets out of version control.
+</Note>
+
+## Deployment with GitHub
+
+For production, deploy from a GitHub repository:
+
+<Steps>
+  <Step title="Push code to GitHub">
+    ```bash
+    git init
+    git add .
+    git commit -m "Initial commit"
+    git remote add origin https://github.com/yourusername/speedybot-deno.git
+    git push -u origin main
+    ```
+  </Step>
+
+  <Step title="Create Deno Deploy project">
+    1. Go to [dash.deno.com](https://dash.deno.com)
+    2. Click **New Project**
+    3. Connect your GitHub repository
+    4. Set entry point to `index.ts`
+  </Step>
+
+  <Step title="Configure environment variables">
+    In project settings, add:
+    - `BOT_TOKEN`
+    - `WEBHOOK_SECRET`
+  </Step>
+
+  <Step title="Deploy">
+    Deno Deploy automatically deploys on push to main branch.
+  </Step>
+</Steps>
+
+## Signature validation
+
+Implement webhook signature validation using Deno's Web Crypto API:
+
+```typescript
+async function validateSignature(
+  payload: string,
+  secret: string,
+  signature: string
+): Promise<boolean> {
+  const encoder = new TextEncoder();
+  
+  // Import secret as crypto key
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign']
+  );
+  
+  // Sign payload
+  const sig = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(payload)
+  );
+  
+  // Convert to hex
+  const hexSignature = Array.from(new Uint8Array(sig))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  
+  return hexSignature === signature;
+}
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Always validate webhooks">
+    Use webhook secrets in production to prevent unauthorized requests:
+
+    ```typescript
+    if (!webhookSecret) {
+      console.warn('No WEBHOOK_SECRET set - webhooks are not validated!');
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Add health checks">
+    Implement a health endpoint for monitoring:
+
+    ```typescript
+    if (url.pathname === '/health') {
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Log errors appropriately">
+    ```typescript
+    bot.captureError((error) => {
+      console.error('Bot error:', {
+        message: error.message,
+        roomId: error.roomId,
+        timestamp: new Date().toISOString(),
+      });
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Use TypeScript strictly">
+    Enable strict mode in `deno.json`:
+
+    ```json
+    {
+      "compilerOptions": {
+        "strict": true,
+        "noImplicitAny": true
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Import errors
+
+Deno uses URLs and npm: specifiers:
+```typescript
+// ✅ Correct
+import { SpeedyBot } from 'npm:speedybot@latest';
+
+// ❌ Wrong
+import { SpeedyBot } from 'speedybot';
+```
+
+### Environment variables not found
+
+Make sure secrets are saved in Deno Deploy settings. They must be added in the web UI, not in code.
+
+### Webhooks return 401
+
+Check signature validation. Ensure `WEBHOOK_SECRET` matches your webhook registration.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="SpeedyCards" icon="window" href="/speedycards/overview">
+    Build interactive cards
+  </Card>
+  <Card title="File handling" icon="file" href="/guides/handling-files">
+    Process file uploads
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Implement error handling
+  </Card>
+  <Card title="LLM integration" icon="robot" href="/guides/llm-integration">
+    Add AI capabilities
+  </Card>
+</CardGroup>

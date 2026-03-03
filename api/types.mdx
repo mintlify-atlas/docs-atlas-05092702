@@ -1,0 +1,504 @@
+---
+title: Core types
+description: Core TypeScript type definitions
+---
+
+SpeedyBot's type definitions for core functionality.
+
+## Configuration types
+
+### SpeedyConfig
+
+Configuration object for SpeedyBot initialization.
+
+```typescript
+type SpeedyConfig = Partial<{
+  allowedEmails: string[];
+}>
+```
+
+<ResponseField name="allowedEmails" type="string[]">
+  Whitelist of email addresses allowed to interact with the bot
+</ResponseField>
+
+## Error types
+
+### SpeedyError
+
+Error object passed to error handlers.
+
+```typescript
+type SpeedyError = {
+  e: unknown;              // Original error
+  message: string;         // Error message
+  status?: string | number; // HTTP status or error code
+  roomId?: string;         // Room where error occurred
+}
+```
+
+**Example:**
+
+```typescript
+Bot.captureError((error: SpeedyError) => {
+  console.error(`[${error.status}] ${error.message}`);
+  if (error.roomId) {
+    Bot.sendTo(error.roomId, 'An error occurred');
+  }
+});
+```
+
+## Message types
+
+### Message
+
+Any valid message content.
+
+```typescript
+type Message = string | number | Card | SpeedyCard
+```
+
+### Card
+
+Raw Adaptive Card JSON specification.
+
+```typescript
+type Card = {
+  type: string;
+  body: unknown[];
+  actions?: any[];
+  $schema: string;
+  version: string;
+}
+```
+
+### MessageTypes
+
+Incoming message type classification.
+
+```typescript
+type MessageTypes = "card" | "file" | "text"
+```
+
+### MessageResponse
+
+Response from sending a message.
+
+```typescript
+type MessageResponse = {
+  id: string;           // Message ID
+  roomId: string;       // Room ID
+  roomType: string;     // "direct" | "group"
+  text: string;         // Plain text
+  markdown?: string;    // Markdown text
+  html?: string;        // HTML rendering
+  personId: string;     // Sender person ID
+  personEmail: string;  // Sender email
+  created: string;      // ISO timestamp
+  updated?: string;     // ISO timestamp (for edited messages)
+  files?: string[];     // File URLs
+}
+```
+
+### ToMessage
+
+Payload for creating a message.
+
+```typescript
+type ToMessage = {
+  roomId?: string;
+  parentId?: string;        // For threaded replies
+  toPersonId?: string;
+  toPersonEmail?: string;
+  text?: string;
+  markdown?: string;
+  files?: string[];
+  attachments?: {
+    contentType?: string;
+    content?: unknown;      // Rendered card
+  }[];
+}
+```
+
+## File types
+
+### SpeedyFile
+
+File metadata.
+
+```typescript
+type SpeedyFile = {
+  url: string;         // File URL
+  name: string;        // File name
+  extension: string;   // Extension without dot
+  contentType: string; // MIME type
+  bytes: number;       // File size
+}
+```
+
+### SpeedyFileUtils
+
+File utilities with data accessor.
+
+```typescript
+type SpeedyFileUtils = SpeedyFile & {
+  getData<T = unknown>(): Promise<T>;
+}
+```
+
+**Example:**
+
+```typescript
+if ($.file?.extension === 'json') {
+  const data = await $.file.getData<MyType>();
+  console.log(`${$.file.name}: ${$.file.bytes} bytes`);
+}
+```
+
+## Webhook types
+
+### ENVELOPES
+
+Incoming webhook payload.
+
+```typescript
+type ENVELOPES = MessageEnvelope | AA_Envelope
+```
+
+### MessageEnvelope
+
+Webhook for text/file messages.
+
+```typescript
+type MessageEnvelope = {
+  id: string;
+  name: string;
+  targetUrl: string;
+  resource: "messages";
+  event: string;
+  orgId: string;
+  createdBy: string;
+  appId: string;
+  ownedBy: string;
+  status: string;
+  created: Date | string;
+  actorId: string;
+  data: Message_Details;
+}
+```
+
+### AA_Envelope
+
+Webhook for card submissions (attachment actions).
+
+```typescript
+type AA_Envelope = {
+  id: string;
+  name: string;
+  targetUrl: string;
+  resource: "attachmentActions";
+  event: string;
+  orgId: string;
+  createdBy: string;
+  appId: string;
+  ownedBy: string;
+  status: string;
+  created: Date | string;
+  actorId: string;
+  data: {
+    id: string;
+    type: string;
+    messageId: string;
+    personId: string;
+    roomId: string;
+    created: Date | string;
+  };
+}
+```
+
+### Message_Details
+
+Text message details from webhook.
+
+```typescript
+type Message_Details = {
+  id: string;
+  roomId: string;
+  roomType: string;
+  text: string;
+  personId: string;
+  personEmail: string;
+  html?: string;
+  mentionedPeople?: string[];
+  created: Date | string;
+  files?: string[];
+  parentId?: string;  // For threaded messages
+}
+```
+
+### File_Details
+
+File message details from webhook.
+
+```typescript
+type File_Details = Message_Details & {
+  files: string[];   // Guaranteed to have files
+  text?: string;     // Optional accompanying text
+}
+```
+
+### Submit_Details
+
+Card submission details.
+
+```typescript
+type Submit_Details<T = object> = {
+  id: string;
+  type: string;
+  messageId: string;
+  inputs: T;           // Form data
+  personId: string;
+  personEmail: string;
+  roomId: string;
+  created: Date | string;
+}
+```
+
+### Webhook
+
+Webhook registration details.
+
+```typescript
+type Webhook = {
+  id: string;
+  name: string;
+  targetUrl: string;
+  resource: string;
+  event: string;
+  orgId: string;
+  createdBy: string;
+  appId: string;
+  ownedBy: string;
+  status: string;
+  created: string;
+  secret?: string;
+}
+```
+
+## User types
+
+### SelfData
+
+User/bot details.
+
+```typescript
+type SelfData = {
+  id: string;
+  emails: string[];
+  phoneNumbers: any[];
+  displayName: string;
+  nickName: string;
+  userName: string;
+  avatar: string;
+  orgId: string;
+  created: Date;
+  status: string;
+  type: "person" | "bot" | "appuser";
+  firstName: string;
+  lastName: string;
+  lastModified: Date;
+  lastActivity: string;
+}
+```
+
+## Room types
+
+### Room_Details
+
+Room information.
+
+```typescript
+type Room_Details = {
+  id: string;
+  title: string;
+  type: string;          // "group" | "direct"
+  isLocked: boolean;
+  lastActivity: string;
+  creatorId: string;
+  created: string;
+  ownerId: string;
+  isPublic: boolean;
+  isReadOnly: boolean;
+}
+```
+
+### RoomConfig
+
+Options for fetching rooms.
+
+```typescript
+type RoomConfig = {
+  type: "group" | "direct";
+  sortBy: "id" | "lastactivity" | "created";
+}
+```
+
+## Data types
+
+### AttachedData
+
+Generic data object for card submissions.
+
+```typescript
+type AttachedData = {
+  [key: string]: boolean | number | string | Record<string, any> | AttachedData;
+}
+```
+
+**Example:**
+
+```typescript
+type MyFormData = AttachedData & {
+  username: string;
+  priority: string;
+  notify: boolean;
+};
+
+Bot.addStep<MyFormData>(async ($) => {
+  if ($.data) {
+    const { username, priority, notify } = $.data;
+    // Type-safe access
+  }
+  return $.next;
+});
+```
+
+## Middleware types
+
+### Middleware
+
+Middleware handler function.
+
+```typescript
+type Middleware<T = AttachedData> = (
+  $: $Magic<T>
+) => boolean | Promise<boolean>
+```
+
+**Returns:** `true` or `$.next` to continue, `false` or `$.end` to stop
+
+### $Magic
+
+The magic $ parameter. See [$ parameter documentation](/api/magic-dollar) for details.
+
+```typescript
+type $Magic<T = AttachedData> = IncomingItem<T> & HelperMethods
+```
+
+### IncomingItem
+
+Union of possible incoming message types.
+
+```typescript
+type IncomingItem<T> = TextData<T> | FileData<T> | CardData<T>
+```
+
+## Destination types
+
+### Destination
+
+Message destination specifier.
+
+```typescript
+type Destination =
+  | { roomId: string }
+  | { toPersonEmail: string }
+  | { toPersonId: string }
+```
+
+## Request types
+
+### CoreMakerequest
+
+Custom request handler type.
+
+```typescript
+type CoreMakerequest<T = unknown> = (
+  url: string,
+  body: any,
+  opts: RequestOps
+) => Promise<T> | T
+```
+
+### RequestOps
+
+Request options.
+
+```typescript
+type RequestOps = {
+  "content-type"?: string;
+  method?: "POST" | "PUT" | "GET" | "DELETE" | "HEAD" | "PATCH";
+  headers?: any;
+  raw?: boolean;
+  [key: string]: any;
+}
+```
+
+## Utility types
+
+### DeepPartial
+
+Recursive partial type.
+
+```typescript
+type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+}
+```
+
+**Example:**
+
+```typescript
+type Config = {
+  server: {
+    host: string;
+    port: number;
+  };
+};
+
+const partialConfig: DeepPartial<Config> = {
+  server: { host: 'localhost' } // port is optional
+};
+```
+
+### DebugInfo
+
+Debug information from `$.debug()`.
+
+```typescript
+type DebugInfo = {
+  messageType: string;
+  messageId: string;
+  text: string;
+  hasFile: boolean;
+  data?: unknown;
+  author: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  msg: {
+    parentId?: string;
+    roomId: string;
+    roomType: string;
+    mentionedPeople: string[];
+  };
+}
+```
+
+### Chunk
+
+Callback for paginated data.
+
+```typescript
+type Chunk<T> = (messageChunk: T[]) => void
+```

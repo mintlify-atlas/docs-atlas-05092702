@@ -1,0 +1,497 @@
+---
+title: Standard server deployment
+description: Deploy SpeedyBot on a traditional Node.js server with Express
+---
+
+Deploy SpeedyBot on a standard Node.js server for full control over your infrastructure. This approach works well for existing server deployments, on-premises hosting, or when you need persistent resources.
+
+## Prerequisites
+
+- Node.js 18.11.0 or higher
+- WebEx bot token ([create one](https://developer.webex.com/my-apps/new/bot))
+- Publicly accessible server or tunneling solution (ngrok, etc.)
+
+## Quick start
+
+<Steps>
+  <Step title="Clone and install">
+    ```bash
+    git clone https://github.com/valgaze/speedybot
+    cd speedybot/examples/standard-server
+    npm install
+    ```
+  </Step>
+
+  <Step title="Configure bot token">
+    **Option 1: Using setup script**
+    ```bash
+    npm run bot:setup YOUR_BOT_TOKEN_HERE
+    ```
+
+    **Option 2: Manual configuration**
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env`:
+    ```bash
+    BOT_TOKEN=your_bot_token_here
+    WEBHOOK_SECRET=your_secret_here
+    PORT=8000
+    ```
+  </Step>
+
+  <Step title="Start the server">
+    ```bash
+    npm run bot:dev
+    ```
+
+    The server starts on port 8000 by default.
+  </Step>
+
+  <Step title="Expose your server">
+    For local development, use a tunneling service:
+
+    **Using ngrok:**
+    ```bash
+    npx ngrok http 8000
+    ```
+
+    **Using Cloudflare Tunnel:**
+    ```bash
+    npx cloudflared tunnel --url http://localhost:8000
+    ```
+
+    Save the public URL (e.g., `https://abc123.ngrok.io`).
+  </Step>
+
+  <Step title="Register webhook">
+    Use [SpeedyBot Garage](https://speedybot.js.org/garage):
+    1. Enter your bot token
+    2. Go to Webhooks tab
+    3. Add your public URL + `/incoming_webhook`
+    4. Set a webhook secret
+  </Step>
+
+  <Step title="Update webhook secret">
+    Add the secret to your `.env` file:
+    ```bash
+    WEBHOOK_SECRET=your_secret_from_garage
+    ```
+
+    Restart the server:
+    ```bash
+    npm run bot:dev
+    ```
+  </Step>
+</Steps>
+
+## Server code structure
+
+The example uses Express.js with this structure:
+
+```typescript src/index.ts
+import express from 'express';
+import { SpeedyBot } from 'speedybot';
+import { setupBot } from './bot';
+
+const app = express();
+const port = process.env.PORT || 8000;
+
+app.use(express.json());
+
+const bot = new SpeedyBot(process.env.BOT_TOKEN || '');
+setupBot(bot);
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Webhook endpoint
+app.post('/incoming_webhook', async (req, res) => {
+  const webhook = req.body;
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  
+  // Validate signature
+  if (webhookSecret) {
+    const signature = req.headers['x-spark-signature'] as string;
+    
+    if (!signature) {
+      return res.status(401).json({ error: 'No signature' });
+    }
+    
+    const isValid = bot.validateSignature(
+      JSON.stringify(webhook),
+      webhookSecret,
+      signature
+    );
+    
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+  }
+  
+  try {
+    await bot.runMiddleware(webhook);
+    res.status(200).json({ status: 'ok' });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`🤖 SpeedyBot server running on port ${port}`);
+  console.log(`📡 Webhook endpoint: http://localhost:${port}/incoming_webhook`);
+});
+```
+
+## Bot configuration
+
+Separate bot logic from server code:
+
+```typescript src/bot.ts
+import { SpeedyBot } from 'speedybot';
+
+export function setupBot(bot: SpeedyBot) {
+  // Greeting handler
+  bot.exact('hello', async ($) => {
+    await $.reply(`Hi ${$.author.name}!`);
+  });
+
+  // File upload handler
+  bot.addStep(async ($) => {
+    if ($.file) {
+      await $.reply(`Received file: ${$.file.name}`);
+      const data = await $.file.getData();
+      // Process file data
+    }
+    return $.next;
+  });
+
+  // Card handler
+  bot.addStep(async ($) => {
+    if ($.text === 'card') {
+      const card = $.card()
+        .addTitle('Server Bot')
+        .addText('Running on a standard server')
+        .addChip('Status: Online');
+      await $.send(card);
+    }
+    return $.next;
+  });
+
+  // Error handler
+  bot.captureError(async (error) => {
+    console.error('Bot error:', error);
+    if (error.roomId) {
+      await bot.sendTo(error.roomId, 'Sorry, something went wrong.');
+    }
+  });
+}
+```
+
+## Environment configuration
+
+Create `.env` for configuration:
+
+```bash .env
+# Bot configuration
+BOT_TOKEN=your_bot_token_here
+WEBHOOK_SECRET=your_webhook_secret
+
+# Server configuration
+PORT=8000
+NODE_ENV=development
+
+# Optional: Additional secrets
+API_KEY=your_api_key
+DATABASE_URL=your_database_url
+```
+
+<Warning>
+Never commit `.env` to version control. Keep it in `.gitignore`.
+</Warning>
+
+## NPM scripts
+
+The example includes helpful scripts:
+
+| Script | Description |
+|--------|-------------|
+| `npm run bot:dev` | Start with live reload |
+| `npm run bot:on` | Start the bot |
+| `npm run bot:setup <token>` | Set bot token |
+| `npm run bot:reset` | Reset configuration |
+| `npm run bot:debug` | Show debug info |
+| `npm run bot:addsecret <key> <value>` | Add a secret |
+
+## Production deployment
+
+### Using PM2
+
+PM2 keeps your bot running and restarts it on crashes:
+
+```bash
+# Install PM2
+npm install -g pm2
+
+# Start bot
+pm2 start src/index.ts --name speedybot
+
+# View logs
+pm2 logs speedybot
+
+# Monitor
+pm2 monit
+
+# Restart
+pm2 restart speedybot
+
+# Auto-start on reboot
+pm2 startup
+pm2 save
+```
+
+### Using systemd
+
+Create a systemd service file:
+
+```ini /etc/systemd/system/speedybot.service
+[Unit]
+Description=SpeedyBot Server
+After=network.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/path/to/speedybot
+EnvironmentFile=/path/to/speedybot/.env
+ExecStart=/usr/bin/node /path/to/speedybot/src/index.ts
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl enable speedybot
+sudo systemctl start speedybot
+sudo systemctl status speedybot
+```
+
+### Using Docker
+
+Create `Dockerfile`:
+
+```dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --production
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["node", "src/index.ts"]
+```
+
+Build and run:
+
+```bash
+# Build image
+docker build -t speedybot .
+
+# Run container
+docker run -d \
+  --name speedybot \
+  -p 8000:8000 \
+  -e BOT_TOKEN=your_token \
+  -e WEBHOOK_SECRET=your_secret \
+  speedybot
+
+# View logs
+docker logs -f speedybot
+```
+
+### Docker Compose
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  speedybot:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - NODE_ENV=production
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+```
+
+Run:
+
+```bash
+docker-compose up -d
+```
+
+## Webhook validation
+
+Always validate webhook signatures:
+
+```typescript
+import crypto from 'crypto';
+
+function validateWebhook(
+  payload: string,
+  secret: string,
+  signature: string
+): boolean {
+  const hmac = crypto.createHmac('sha1', secret);
+  hmac.update(payload);
+  const expected = hmac.digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expected)
+  );
+}
+```
+
+## Monitoring and logging
+
+### Add logging middleware
+
+```typescript
+import morgan from 'morgan';
+
+app.use(morgan('combined'));
+```
+
+### Custom request logging
+
+```typescript
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+  next();
+});
+```
+
+### Error handling middleware
+
+```typescript
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+```
+
+## Testing locally
+
+Test webhook endpoint without WebEx:
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"id": "test-message-id"}' \
+  http://localhost:8000/incoming_webhook
+```
+
+## Troubleshooting
+
+### Server won't start
+
+Check if port is already in use:
+```bash
+lsof -i :8000
+```
+
+Use a different port:
+```bash
+PORT=3000 npm run bot:dev
+```
+
+### Webhooks not received
+
+1. Verify server is publicly accessible
+2. Check webhook URL in SpeedyBot Garage
+3. View server logs for incoming requests
+4. Test with curl (see above)
+
+### Signature validation fails
+
+Ensure webhook secret matches:
+```bash
+# In .env
+WEBHOOK_SECRET=same_secret_as_in_garage
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Use environment variables">
+    Never hardcode secrets. Always use environment variables:
+    ```typescript
+    const token = process.env.BOT_TOKEN;
+    if (!token) {
+      throw new Error('BOT_TOKEN not set');
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Implement health checks">
+    Add a health endpoint for monitoring:
+    ```typescript
+    app.get('/health', (req, res) => {
+      res.json({ 
+        status: 'ok',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
+      });
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Add rate limiting">
+    Protect against abuse:
+    ```typescript
+    import rateLimit from 'express-rate-limit';
+
+    const limiter = rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100 // limit each IP to 100 requests per windowMs
+    });
+
+    app.use('/incoming_webhook', limiter);
+    ```
+  </Accordion>
+
+  <Accordion title="Use HTTPS in production">
+    Always use HTTPS for webhook endpoints. Use a reverse proxy like nginx with Let's Encrypt certificates.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="SpeedyCards" icon="window" href="/speedycards/overview">
+    Build interactive cards
+  </Card>
+  <Card title="File handling" icon="file" href="/guides/handling-files">
+    Process file uploads
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Implement error handling
+  </Card>
+  <Card title="LLM integration" icon="robot" href="/guides/llm-integration">
+    Add AI capabilities
+  </Card>
+</CardGroup>

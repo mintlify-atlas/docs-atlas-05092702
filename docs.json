@@ -1,122 +1,127 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "SpeedyBot",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#0C7DC6",
+    "light": "#47B0E8",
+    "dark": "#084D7D"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/valgaze/speedybot"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/valgaze/speedybot"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
               "index",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/speedybot-basics",
+              "concepts/middleware-steps",
+              "concepts/context-state",
+              "concepts/webhooks"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "SpeedyCards",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "speedycards/overview",
+              "speedycards/building-cards",
+              "speedycards/card-components",
+              "speedycards/handling-submissions"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Guides",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "guides/handling-files",
+              "guides/user-input",
+              "guides/llm-integration",
+              "guides/deployment",
+              "guides/error-handling"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/overview",
+              "cli/setup",
+              "cli/token",
+              "cli/webhook"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Core Classes",
             "pages": [
-              "api-reference/introduction"
+              "api/speedybot",
+              "api/speedycard",
+              "api/magic-dollar"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Types & Interfaces",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/types",
+              "api/message-types",
+              "api/card-types"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/utilities",
+              "api/constants"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Platform Examples",
+            "pages": [
+              "examples/overview",
+              "examples/cloudflare-workers",
+              "examples/aws-lambda",
+              "examples/deno",
+              "examples/standard-server"
+            ]
+          },
+          {
+            "group": "Feature Examples",
+            "pages": [
+              "examples/llm-streaming",
+              "examples/location-sharing",
+              "examples/voiceflow-integration",
+              "examples/file-processing"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

@@ -1,0 +1,457 @@
+---
+title: Message types
+description: Types for messages and message handling
+---
+
+Type definitions for working with messages in SpeedyBot.
+
+## Message content types
+
+### Message
+
+Union of all valid message content types.
+
+```typescript
+type Message = string | number | Card | SpeedyCard
+```
+
+**Usage:**
+
+```typescript
+// String
+await Bot.sendTo(roomId, '**Hello**');
+
+// Number
+await Bot.sendTo(roomId, 42);
+
+// SpeedyCard
+const card = Bot.card().addTitle('Title');
+await Bot.sendTo(roomId, card);
+
+// Raw Card JSON
+await Bot.sendTo(roomId, {
+  type: 'AdaptiveCard',
+  version: '1.0',
+  body: [...]
+});
+```
+
+### MessageTypes
+
+Classification of incoming messages.
+
+```typescript
+type MessageTypes = "text" | "file" | "card"
+```
+
+- `"text"`: Plain text message or @-mention
+- `"file"`: Message with file attachment
+- `"card"`: Adaptive Card submission
+
+**Usage:**
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.messageType === 'text') {
+    // Handle text
+  } else if ($.messageType === 'file') {
+    // Handle file
+  } else if ($.messageType === 'card') {
+    // Handle card submission
+  }
+  return $.next;
+});
+```
+
+### EventTypes
+
+Alias for message type classification.
+
+```typescript
+type EventTypes = "text" | "file" | "card"
+```
+
+## Message response types
+
+### MessageResponse
+
+Response received after sending a message.
+
+```typescript
+type MessageResponse = {
+  id: string;              // Unique message identifier
+  roomId: string;          // Room where message was sent
+  roomType: string;        // "direct" or "group"
+  text: string;            // Plain text content
+  markdown?: string;       // Markdown content
+  html?: string;           // HTML rendering
+  personId: string;        // Sender's person ID
+  personEmail: string;     // Sender's email
+  created: string;         // ISO 8601 timestamp
+  updated?: string;        // ISO 8601 timestamp (for edited messages)
+  files?: string[];        // Array of file URLs
+}
+```
+
+**Usage:**
+
+```typescript
+const response = await Bot.sendTo('user@example.com', 'Hello!');
+console.log(`Message ${response.id} sent at ${response.created}`);
+
+// Use for editing
+await Bot.editMessage(response.roomId, response.id, 'Updated text');
+
+// Use for replying
+await Bot.replyTo(response, 'This is a reply');
+```
+
+### ToMessage
+
+Payload for creating a new message.
+
+```typescript
+type ToMessage = {
+  roomId?: string;              // Send to specific room
+  parentId?: string;            // Reply to message (creates thread)
+  toPersonId?: string;          // Send to person by ID
+  toPersonEmail?: string;       // Send to person by email
+  text?: string;                // Plain text
+  markdown?: string;            // Markdown text
+  files?: string[];             // File URLs to attach
+  attachments?: {               // Adaptive Cards
+    contentType?: string;
+    content?: unknown;
+  }[];
+}
+```
+
+**Usage:**
+
+```typescript
+// Direct message by email
+const payload: ToMessage = {
+  toPersonEmail: 'user@example.com',
+  markdown: '**Hello!**'
+};
+
+// Threaded reply
+const reply: ToMessage = {
+  roomId: 'room-id',
+  parentId: 'parent-message-id',
+  text: 'Reply text'
+};
+
+// With card
+const cardMessage: ToMessage = {
+  roomId: 'room-id',
+  text: 'Fallback text',
+  attachments: [{
+    contentType: 'application/vnd.microsoft.card.adaptive',
+    content: cardJson
+  }]
+};
+```
+
+## Message detail types
+
+### Message_Details
+
+Detailed message information from webhooks.
+
+```typescript
+type Message_Details = {
+  id: string;                  // Message ID
+  roomId: string;              // Room ID
+  roomType: string;            // "direct" or "group"
+  text: string;                // Message text
+  personId: string;            // Author person ID
+  personEmail: string;         // Author email
+  html?: string;               // HTML rendering
+  mentionedPeople?: string[];  // Array of @-mentioned person IDs
+  created: Date | string;      // Creation timestamp
+  files?: string[];            // File URLs (if any)
+  parentId?: string;           // Parent message ID (for threads)
+}
+```
+
+### File_Details
+
+Message details when files are attached.
+
+```typescript
+type File_Details = Message_Details & {
+  files: string[];    // Guaranteed to have at least one file
+  text?: string;      // Optional accompanying text
+}
+```
+
+**Usage:**
+
+```typescript
+// SpeedyBot automatically determines type
+Bot.addStep(async ($) => {
+  if ($.messageType === 'file' && $.file) {
+    const { name, extension, bytes } = $.file;
+    await $.send(`Received ${name} (${bytes} bytes)`);
+    
+    // Access file data
+    const data = await $.file.getData();
+  }
+  return $.next;
+});
+```
+
+### Submit_Details
+
+Card submission details.
+
+```typescript
+type Submit_Details<T = object> = {
+  id: string;              // Submission ID
+  type: string;            // Usually "submit"
+  messageId: string;       // Original card message ID
+  inputs: T;               // Form data from card
+  personId: string;        // Submitter person ID
+  personEmail: string;     // Submitter email
+  roomId: string;          // Room ID
+  created: Date | string;  // Submission timestamp
+}
+```
+
+**Usage with type safety:**
+
+```typescript
+type FeedbackForm = {
+  rating: string;
+  comments: string;
+  notify: boolean;
+};
+
+Bot.addStep<FeedbackForm>(async ($) => {
+  if ($.data) {
+    const { rating, comments, notify } = $.data;
+    // TypeScript knows the shape of the data
+    await $.send(`Thanks for the ${rating} rating!`);
+  }
+  return $.next;
+});
+```
+
+## Incoming message types
+
+### IncomingItem
+
+Union of all incoming message data types.
+
+```typescript
+type IncomingItem<T> = TextData<T> | FileData<T> | CardData<T>
+```
+
+### TextData
+
+Structure for text messages.
+
+```typescript
+interface TextData<T> extends commonData {
+  messageType: "text";
+  text: string;              // Guaranteed text content
+  data?: T;                  // Not included with text
+  file?: SpeedyFileUtils;    // Not included with text
+}
+```
+
+### FileData
+
+Structure for file messages.
+
+```typescript
+interface FileData<T> extends commonData {
+  messageType: "file";
+  file: SpeedyFileUtils;     // Guaranteed file
+  text?: string;             // Optional caption
+  data?: T;                  // Not included with files
+}
+```
+
+### CardData
+
+Structure for card submissions.
+
+```typescript
+interface CardData<T> extends commonData {
+  messageType: "card";
+  data?: T;                  // Form submission data
+  text?: string;             // Only for chip submissions
+  file?: SpeedyFileUtils;    // Not included with cards
+}
+```
+
+## Webhook envelope types
+
+### ENVELOPES
+
+Union of webhook payload types.
+
+```typescript
+type ENVELOPES = MessageEnvelope | AA_Envelope
+```
+
+### MessageEnvelope
+
+Webhook payload for text/file messages.
+
+```typescript
+type MessageEnvelope = {
+  id: string;
+  name: string;
+  targetUrl: string;
+  resource: "messages";      // Always "messages"
+  event: string;
+  orgId: string;
+  createdBy: string;
+  appId: string;
+  ownedBy: string;
+  status: string;
+  created: Date | string;
+  actorId: string;
+  data: Message_Details;     // Message details
+}
+```
+
+### AA_Envelope
+
+Webhook payload for card submissions.
+
+```typescript
+type AA_Envelope = {
+  id: string;
+  name: string;
+  targetUrl: string;
+  resource: "attachmentActions";  // Always "attachmentActions"
+  event: string;
+  orgId: string;
+  createdBy: string;
+  appId: string;
+  ownedBy: string;
+  status: string;
+  created: Date | string;
+  actorId: string;
+  data: {
+    id: string;
+    type: string;
+    messageId: string;
+    personId: string;
+    roomId: string;
+    created: Date | string;
+  };
+}
+```
+
+**Usage:**
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env) {
+    const webhook: ENVELOPES = await request.json();
+    
+    // Process through SpeedyBot
+    await Bot.runMiddleware(webhook);
+    
+    return new Response('OK');
+  }
+};
+```
+
+## Destination types
+
+### Destination
+
+Specifies where to send a message.
+
+```typescript
+type Destination =
+  | { roomId: string }
+  | { toPersonEmail: string }
+  | { toPersonId: string }
+```
+
+**Usage:**
+
+```typescript
+// Room
+await Bot.sendTo('room-id-here', 'Message');
+
+// Email
+await Bot.sendTo('user@example.com', 'Message');
+
+// Person ID
+await Bot.sendTo({ personId: 'person-id' }, 'Message');
+```
+
+## Common patterns
+
+### Type-safe card submissions
+
+```typescript
+type MyFormData = {
+  username: string;
+  department: string;
+  priority: 'high' | 'medium' | 'low';
+  urgent: boolean;
+};
+
+Bot.addStep<MyFormData>(async ($) => {
+  if ($.data) {
+    // TypeScript knows exact shape
+    const { username, department, priority, urgent } = $.data;
+    
+    await $.send(`Request from ${username} (${department})`);
+    await $.send(`Priority: ${priority}, Urgent: ${urgent}`);
+  }
+  return $.next;
+});
+```
+
+### Conditional message handling
+
+```typescript
+Bot.addStep(async ($) => {
+  switch ($.messageType) {
+    case 'text':
+      if ($.text) {
+        await $.send(`You said: ${$.text}`);
+      }
+      break;
+      
+    case 'file':
+      if ($.file) {
+        await $.send(`File: ${$.file.name} (${$.file.extension})`);
+      }
+      break;
+      
+    case 'card':
+      if ($.data) {
+        await $.send('Form submitted!');
+      }
+      break;
+  }
+  return $.next;
+});
+```
+
+### Threading replies
+
+```typescript
+Bot.addStep(async ($) => {
+  // Send root message
+  const root = await $.send('Starting process...');
+  
+  // Reply to create thread
+  await Bot.replyTo(root, 'Step 1 complete');
+  await Bot.replyTo(root, 'Step 2 complete');
+  await Bot.replyTo(root, 'All done!');
+  
+  return $.next;
+});
+```

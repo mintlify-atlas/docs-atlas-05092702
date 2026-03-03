@@ -1,0 +1,450 @@
+---
+title: Deployment
+description: Deploy SpeedyBot to various platforms and environments
+---
+
+SpeedyBot works seamlessly across serverless platforms, containers, and traditional servers. Choose the deployment that fits your infrastructure.
+
+## Cloudflare Workers
+
+Cloudflare Workers provide a fast, globally-distributed serverless platform.
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    npm install speedybot
+    npm install -D wrangler
+    ```
+  </Step>
+  
+  <Step title="Create worker">
+    ```typescript ~/workspace/source/examples/worker/src/index.ts
+    import Bot from './settings/bot';
+    import { ENVELOPES, logoRoll } from 'speedybot';
+    import { validateWebhook } from './validateWebhook';
+    
+    export interface Env {
+      BOT_TOKEN: string;
+      WEBHOOK_SECRET: string;
+    }
+    
+    export default {
+      async fetch(
+        request: Request,
+        env: Env,
+        ctx: ExecutionContext
+      ): Promise<Response> {
+        if (request.method === 'GET') {
+          return new Response(`${logoRoll()}\n${new Date()}`);
+        }
+        
+        Bot.setToken(env.BOT_TOKEN);
+        const json = await request.json();
+        const signature = request.headers.get('x-spark-signature');
+        const secret = env.WEBHOOK_SECRET;
+        
+        // Validate webhook
+        if (signature) {
+          const proceed = await validateWebhook(json, secret, signature);
+          if (proceed === false) {
+            return new Response('Webhook Rejected');
+          }
+        }
+        
+        ctx.waitUntil(
+          new Promise<void>(async (resolve, reject) => {
+            try {
+              await Bot.runMiddleware(json as ENVELOPES);
+            } catch (e) {
+              reject(e);
+            }
+          })
+        );
+        
+        return new Response(logoRoll());
+      },
+    };
+    ```
+  </Step>
+  
+  <Step title="Configure wrangler.toml">
+    ```toml
+    name = "speedybot-worker"
+    main = "src/index.ts"
+    compatibility_date = "2024-01-01"
+    
+    [vars]
+    # Add your variables or use secrets
+    ```
+  </Step>
+  
+  <Step title="Deploy">
+    ```bash
+    npx wrangler secret put BOT_TOKEN
+    npx wrangler secret put WEBHOOK_SECRET
+    npx wrangler deploy
+    ```
+  </Step>
+</Steps>
+
+## AWS Lambda
+
+Deploy SpeedyBot as a Lambda function with API Gateway.
+
+<Steps>
+  <Step title="Install SST (or SAM/CDK)">
+    ```bash
+    npm install sst
+    ```
+  </Step>
+  
+  <Step title="Create Lambda handler">
+    ```typescript ~/workspace/source/examples/lambda/packages/functions/src/lambda.ts
+    import { APIGatewayProxyHandlerV2 } from 'aws-lambda';
+    import { ENVELOPES } from 'speedybot';
+    import Bot from './settings/bot';
+    import { validateSignature } from './validate_webhook';
+    import 'cross-fetch/polyfill'; // for node <18
+    
+    export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+      const signature = event.headers['x-spark-signature'];
+      const CONFIG = {
+        secret: process.env.WEBHOOK_SECRET as string,
+        BOT_TOKEN: process.env.BOT_TOKEN as string,
+      };
+      
+      Bot.setToken(CONFIG.BOT_TOKEN);
+      
+      let data = {};
+      if ('body' in event && event.body) {
+        try {
+          data = JSON.parse(event.body);
+        } catch (e) {
+          console.log('#Error with body', e);
+        }
+      }
+      
+      // Validate webhook secret
+      if (signature) {
+        const proceed = validateSignature(
+          signature as string,
+          CONFIG.secret as string,
+          data
+        );
+        
+        if (!proceed) {
+          throw new Error('Issue with webhook secret');
+        }
+      }
+      
+      Bot.addSecrets(CONFIG);
+      await Bot.runMiddleware(data as ENVELOPES);
+      
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'text/plain' },
+        body: `SpeedyBot: Request received at ${event.requestContext.time}.`,
+      };
+    };
+    ```
+  </Step>
+  
+  <Step title="Configure stack">
+    ```typescript
+    import { Function, Api } from 'sst/constructs';
+    
+    export function API({ stack }: StackContext) {
+      const api = new Api(stack, 'api', {
+        routes: {
+          'POST /speedybot': {
+            function: {
+              handler: 'packages/functions/src/lambda.handler',
+              environment: {
+                BOT_TOKEN: process.env.BOT_TOKEN!,
+                WEBHOOK_SECRET: process.env.WEBHOOK_SECRET!,
+              },
+            },
+          },
+        },
+      });
+      
+      stack.addOutputs({
+        ApiEndpoint: api.url,
+      });
+    }
+    ```
+  </Step>
+  
+  <Step title="Deploy">
+    ```bash
+    npx sst deploy --stage production
+    ```
+  </Step>
+</Steps>
+
+<Note>
+For Node.js < 18, install `cross-fetch` polyfill for Blob and FormData support.
+</Note>
+
+## Deno Deploy
+
+Deno provides a modern, secure runtime with TypeScript support built-in.
+
+```typescript ~/workspace/source/examples/deno/index.ts
+import { SpeedyBot, logoRoll } from 'https://cdn.skypack.dev/speedybot@latest';
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'GET') {
+    return new Response(`Server is running ${new Date()} ${logoRoll()}`);
+  }
+  
+  const CONFIG = {
+    token: Deno.env.get('token'),
+    webhookSecret: Deno.env.get('webhookSecret'),
+  };
+  
+  if (req.method === 'POST') {
+    const signature = req.headers.get('x-spark-signature');
+    const Bot = new SpeedyBot(CONFIG.token);
+    const json = await req.json();
+    
+    if (signature) {
+      const proceed = await validateWebhook(
+        json,
+        CONFIG.webhookSecret,
+        signature
+      );
+      if (proceed === false) {
+        return new Response('Webhook Secret Rejected');
+      }
+    }
+    
+    // Add your bot logic
+    Bot.addStep(async ($) => {
+      await $.send(`Hello, you said "${$.text}"`);
+      return $.next;
+    });
+    
+    await Bot.runMiddleware(json);
+  }
+  
+  return new Response('Request processed');
+});
+```
+
+Deploy with:
+```bash
+deployctl deploy --project=speedybot index.ts
+```
+
+## Express.js / Node server
+
+For traditional Node.js servers with Express:
+
+```typescript ~/workspace/source/examples/standard-server/src/index.ts
+import * as bodyParser from 'body-parser';
+import { config } from 'dotenv';
+import express from 'express';
+import { resolve } from 'path';
+import Bot from './settings/bot';
+import { validateWebhook } from './validateWebhook';
+
+config({ path: resolve(__dirname, '..', '.env') });
+
+const app = express();
+const port = process.env.PORT || 8000;
+app.use(bodyParser.json());
+
+const token = process.env.BOT_TOKEN as string;
+if (!token) {
+  console.log('## Token missing (check .env file)');
+  process.exit(0);
+}
+Bot.setToken(token);
+
+app.post('/speedybot', async (req, res) => {
+  const json = req.body;
+  const signature = req.header('x-spark-signature');
+  const webhookSecret = process.env.WEBHOOK_SECRET || '';
+  
+  // Validate webhook
+  if (signature) {
+    const proceed = validateWebhook(json, webhookSecret, signature);
+    if (proceed === false) {
+      return res.send('Webhook Secret Rejected');
+    }
+  }
+  
+  await Bot.runMiddleware(json);
+  res.status(200).send('ok');
+});
+
+app.get('/', (_, res) => {
+  res.send('Register webhooks at https://speedybot.js.org/garage');
+});
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+```
+
+## Docker
+
+Containerize your SpeedyBot application:
+
+```dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["node", "dist/index.js"]
+```
+
+Build and run:
+```bash
+docker build -t speedybot .
+docker run -p 8000:8000 \
+  -e BOT_TOKEN="your-token" \
+  -e WEBHOOK_SECRET="your-secret" \
+  speedybot
+```
+
+## Environment variables
+
+All platforms need these core variables:
+
+<CodeGroup>
+
+```bash .env
+BOT_TOKEN=your_bot_token_here
+WEBHOOK_SECRET=your_webhook_secret
+```
+
+```bash Railway/Render
+BOT_TOKEN=your_bot_token_here
+WEBHOOK_SECRET=your_webhook_secret
+PORT=8000
+```
+
+```bash Cloudflare Workers
+# Use wrangler secrets
+wrangler secret put BOT_TOKEN
+wrangler secret put WEBHOOK_SECRET
+```
+
+</CodeGroup>
+
+## Webhook validation
+
+Always validate webhook signatures in production:
+
+```typescript
+export const validateWebhook = async <T = any>(
+  requestData: T,
+  secret: string,
+  signature: string
+): Promise<boolean> => {
+  const stringyBody =
+    typeof requestData !== 'string'
+      ? JSON.stringify(requestData)
+      : requestData;
+  
+  const algo = {
+    name: 'HMAC',
+    hash: 'SHA-1',
+  };
+  
+  const hmacKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    algo,
+    false,
+    ['sign']
+  );
+  
+  const hmacData = await crypto.subtle.sign(
+    algo,
+    hmacKey,
+    new TextEncoder().encode(stringyBody)
+  );
+  
+  const bufferToHex = (buffer: ArrayBufferLike) => {
+    return Array.prototype.map
+      .call(new Uint8Array(buffer), (x) =>
+        ('00' + x.toString(16)).slice(-2)
+      )
+      .join('');
+  };
+  
+  const hmacDataHex = bufferToHex(hmacData);
+  return hmacDataHex === signature;
+};
+```
+
+## Setting up webhooks
+
+After deploying, register your webhook endpoint:
+
+<Steps>
+  <Step title="Get your public URL">
+    After deployment, you'll have a public URL like:
+    - Cloudflare: `https://speedybot.your-subdomain.workers.dev`
+    - Lambda: `https://abc123.execute-api.us-east-1.amazonaws.com/speedybot`
+    - Deno: `https://speedybot.deno.dev`
+  </Step>
+  
+  <Step title="Register webhooks">
+    Use the SpeedyBot CLI or Garage:
+    
+    ```bash
+    npx speedybot webhook create \
+      -w https://your-url.com/speedybot \
+      -t your_bot_token \
+      -s your_webhook_secret
+    ```
+    
+    Or visit [SpeedyBot Garage](https://speedybot.js.org/garage)
+  </Step>
+  
+  <Step title="Test your bot">
+    Send a message to your bot in WebEx to verify the deployment works.
+  </Step>
+</Steps>
+
+## Platform comparison
+
+| Platform | Cold Start | Cost | Complexity | Best For |
+|----------|------------|------|------------|----------|
+| Cloudflare Workers | ~0ms | Free tier generous | Low | Global distribution |
+| AWS Lambda | 100-500ms | Pay per use | Medium | AWS ecosystem |
+| Deno Deploy | ~10ms | Free tier available | Low | Modern runtime |
+| Express/Node | N/A (always on) | Server costs | Low | Traditional hosting |
+| Docker | N/A | Container costs | Medium | Kubernetes, orchestration |
+
+<Info>
+For most use cases, Cloudflare Workers or Deno Deploy offer the best developer experience and performance.
+</Info>
+
+## Production checklist
+
+- [ ] Environment variables configured
+- [ ] Webhook secret validation enabled
+- [ ] Error handling implemented
+- [ ] Logging configured
+- [ ] Rate limiting considered
+- [ ] Monitoring/alerts set up
+- [ ] Health check endpoint added
+- [ ] HTTPS enforced
+- [ ] Bot token stored securely
+- [ ] Webhooks registered
+
+<Warning>
+Never commit tokens or secrets to version control. Use environment variables or secret management services.
+</Warning>

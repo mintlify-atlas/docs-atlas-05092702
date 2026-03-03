@@ -1,0 +1,181 @@
+---
+title: SpeedyCards overview
+description: Build rich, interactive Adaptive Cards with a simple builder pattern
+---
+
+## What are SpeedyCards?
+
+SpeedyCards provide a fluent, chainable API for building [Adaptive Cards](https://adaptivecards.io) without writing JSON. They make it easy to create visually rich, interactive cards that collect user input and display information in a structured way.
+
+<Note>
+SpeedyCards are built on top of the Adaptive Cards specification but provide a much simpler developer experience through method chaining.
+</Note>
+
+## Why use SpeedyCards?
+
+### Simple builder pattern
+
+Instead of writing complex JSON structures, SpeedyCards let you build cards with an intuitive, chainable API:
+
+```typescript
+const card = $.card()
+  .addTitle('Welcome to SpeedyBot')
+  .addText('This is much easier than writing JSON')
+  .addImage('https://example.com/image.png')
+  .addButton('Click me', 'button_id');
+
+await $.send(card);
+```
+
+### Automatic form handling
+
+SpeedyCards automatically handle form submissions and make the data available through `$.data`:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.data) {
+    // Access form data directly
+    const userName = $.data.name;
+    const email = $.data.email;
+    await $.send(`Thanks ${userName}!`);
+  }
+  return $.next;
+});
+```
+
+### Rich components out of the box
+
+SpeedyCards include built-in support for:
+
+- Text with markdown, colors, and sizing
+- Images with click actions
+- Buttons and chips for quick interactions
+- Form inputs (text, textarea, dropdowns)
+- Date and time pickers
+- Tables for displaying structured data
+- Single and multi-select options
+
+### Type safety
+
+SpeedyCards are written in TypeScript and provide full type hints and autocomplete in modern editors.
+
+## Basic example
+
+Here's a complete example of creating and sending a card:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+Bot.addStep(async ($) => {
+  if ($.text === 'card') {
+    const card = $.card()
+      .addTitle('Customer Feedback')
+      .addText('Please rate your experience')
+      .addSingleSelect(['Excellent', 'Good', 'Fair', 'Poor'], 'rating')
+      .addTextarea('Additional comments', 'comments');
+    
+    await $.send(card);
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.data) {
+    const { rating, comments } = $.data;
+    await $.send(`You rated: ${rating}`);
+    if (comments) {
+      await $.send(`Comments: ${comments}`);
+    }
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+## Creating a card
+
+You can create a SpeedyCard in several ways:
+
+### Using the $ helper
+
+Inside a bot step, use `$.card()` to create a new card:
+
+```typescript
+Bot.addStep(async ($) => {
+  const card = $.card()
+    .addTitle('My Card')
+    .addText('Card content');
+  
+  await $.send(card);
+  return $.next;
+});
+```
+
+### Using shortcuts
+
+The `$.card()` method accepts an abbreviated config object:
+
+```typescript
+const card = $.card({
+  title: 'Quick Card',
+  subTitle: 'With subtitle',
+  image: 'https://example.com/image.png',
+  chips: ['Option 1', 'Option 2'],
+  table: [['Name', 'Value'], ['Item 1', '100']]
+});
+```
+
+### Direct instantiation
+
+You can also create a SpeedyCard directly:
+
+```typescript
+import { SpeedyCard } from 'speedybot';
+
+const card = new SpeedyCard()
+  .addTitle('My Card')
+  .addText('Content');
+```
+
+## Method chaining
+
+All SpeedyCard builder methods return `this`, allowing you to chain method calls:
+
+```typescript
+const card = $.card()
+  .addTitle('Chained Methods')
+  .addText('First line')
+  .addText('Second line')
+  .addImage('https://example.com/image.png')
+  .addButton('Click me', 'button_id');
+```
+
+## Building the card
+
+When you're ready to send the card, SpeedyBot automatically calls `.build()` which generates the Adaptive Card JSON. You typically don't need to call this method yourself:
+
+```typescript
+// SpeedyBot handles this automatically
+await $.send(card);
+
+// But you can access the raw JSON if needed
+const cardJson = card.build();
+console.log(cardJson);
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Building cards" icon="hammer" href="./building-cards">
+    Learn about all the card builder methods
+  </Card>
+  <Card title="Card components" icon="puzzle-piece" href="./card-components">
+    Explore available components like chips, tables, and forms
+  </Card>
+  <Card title="Handling submissions" icon="paper-plane" href="./handling-submissions">
+    Process form data from card submissions
+  </Card>
+</CardGroup>

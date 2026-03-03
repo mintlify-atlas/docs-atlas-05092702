@@ -1,0 +1,291 @@
+---
+title: LLM token streaming
+description: Stream LLM responses efficiently to Webex with progressive message updates
+---
+
+## Overview
+
+This pattern demonstrates how to stream LLM responses token-by-token into Webex messages, creating a smooth "typing" effect that improves user experience. Instead of forcing users to wait for complete LLM generation, responses appear progressively.
+
+<Info>
+Webex allows up to 10 message edits, which SpeedyBot uses to approximate real-time streaming from LLM services.
+</Info>
+
+## Use case
+
+LLM response times can create poor user experiences. Token streaming allows you to:
+
+- Display partial responses as they generate
+- Reduce perceived latency
+- Keep users engaged during long completions
+- Make your bot feel more responsive and interactive
+
+![LLM Streaming Demo](https://github.com/valgaze/speedybot-utils/blob/main/assets/various/llm_stream.gif?raw=true)
+
+## Setup
+
+<Steps>
+
+<Step title="Install dependencies">
+
+Clone the example and install dependencies:
+
+```bash
+git clone https://github.com/valgaze/speedybot
+cd speedybot/examples/llm-stream
+npm install
+```
+
+</Step>
+
+<Step title="Configure bot token">
+
+Create a bot and get your access token from [https://developer.webex.com/my-apps/new/bot](https://developer.webex.com/my-apps/new/bot)
+
+Set your token:
+
+```bash
+npm run bot:setup YOUR_BOT_TOKEN
+```
+
+Or manually create a `.env` file:
+
+```bash
+BOT_TOKEN=YOUR_TOKEN_HERE
+```
+
+</Step>
+
+<Step title="Add OpenAI API key">
+
+Get an API key from [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+
+Add it to your environment:
+
+```bash
+npm run bot:addsecret OPEN_AI_KEY=sk-your-key-here
+```
+
+Your `.env` should contain:
+
+```bash
+OPEN_AI_KEY=sk-your-key-here
+BOT_TOKEN=your-bot-token
+```
+
+</Step>
+
+<Step title="Run the bot">
+
+Start your bot:
+
+```bash
+npm run dev
+```
+
+</Step>
+
+</Steps>
+
+## Implementation
+
+### Bot handler
+
+The bot processes incoming messages and initiates streaming:
+
+```typescript
+import { SpeedyBot } from "speedybot";
+import { OpenAIStream } from "./llm-stream";
+
+const Bot = new SpeedyBot<"OPEN_AI_KEY">();
+
+Bot.addStep(async ($) => {
+  if ($.text) {
+    const rootMsg = await $.reply("Thinking...");
+    
+    OpenAIStream(
+      Bot.getSecret("OPEN_AI_KEY") as string,
+      $.text,
+      async (currentChunk, isFinal) => {
+        await $.edit(rootMsg, currentChunk);
+      },
+      {},
+      15 // minimum words before edit
+    );
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+### Streaming handler
+
+The `OpenAIStream` function manages chunked responses and progressive edits:
+
+```typescript
+import { OpenAIChat } from "@axflow/models/openai/chat";
+import { StreamToIterable } from "@axflow/models/shared";
+
+export const OpenAIStream = async (
+  apiKey: string,
+  prompt: string,
+  cb: (currentChunk: string, isFinale: boolean) => void,
+  config: Partial<OpenAIChatTypes.Request> = {},
+  minWords = 15
+) => {
+  const stream = await OpenAIChat.stream(
+    {
+      model: config.model ?? "gpt-4",
+      messages: (config.messages ?? []).concat({
+        role: "user",
+        content: prompt,
+      }),
+    },
+    { apiKey }
+  );
+
+  const chatEditor = new ChatResponseEditor({ minWords });
+  
+  for await (const chunk of StreamToIterable(stream)) {
+    chatEditor.incomingChunkHandler(
+      chunk,
+      async (currentChunk: string, isFinale: boolean) => {
+        cb(currentChunk, isFinale);
+      }
+    );
+  }
+};
+```
+
+### Response editor
+
+The `ChatResponseEditor` class controls when messages are updated:
+
+```typescript
+class ChatResponseEditor {
+  private editsDone: number = 0;
+  private maxEdits = 8;
+  private minWords = 5;
+  private charBuffer = "";
+  private isFinished = false;
+
+  constructor(config?: { maxEdits?: number; minWords?: number }) {
+    this.maxEdits = config?.maxEdits ?? 8;
+    this.minWords = config?.minWords ?? 5;
+  }
+
+  public incomingChunkHandler = (
+    chunk: Chunk,
+    callback: (chunk: string, isFinished?: boolean) => unknown
+  ) => {
+    const content = chunk.choices[0]?.delta?.content || "";
+    this.charBuffer += content;
+    
+    if (!this.isFinished) {
+      this.isFinished = chunk.choices[0]?.finish_reason === "stop";
+    }
+
+    const numWords = this.charBuffer.split(" ").length;
+    
+    // Update message when enough words accumulated or stream finished
+    if (
+      this.isFinished ||
+      (this.editsDone < this.maxEdits && numWords >= this.minWords)
+    ) {
+      callback(this.charBuffer, this.isFinished);
+      this.editsDone++;
+    }
+  };
+}
+```
+
+## How it works
+
+<Steps>
+
+<Step title="Initial message">
+When a user sends a message, the bot immediately replies with "Thinking..." to acknowledge receipt.
+</Step>
+
+<Step title="Stream chunks">
+The LLM begins generating tokens. The streaming handler accumulates chunks until a threshold is reached (default: 15 words).
+</Step>
+
+<Step title="Progressive updates">
+Each time the word threshold is met, the message is edited with the accumulated content. This happens up to 8 times (Webex allows 10 edits total).
+</Step>
+
+<Step title="Final update">
+When the LLM finishes generating, the message receives one final edit with the complete response.
+</Step>
+
+</Steps>
+
+<Warning>
+Webex has a limit of 10 message edits. The implementation uses 8 edits by default to stay safely under this limit.
+</Warning>
+
+## Customization
+
+### Adjust edit frequency
+
+Control how often messages update by changing `minWords`:
+
+```typescript
+OpenAIStream(
+  apiKey,
+  prompt,
+  callback,
+  {},
+  25 // Update every 25 words (less frequent updates)
+);
+```
+
+### Change LLM model
+
+Pass configuration options to use different models:
+
+```typescript
+OpenAIStream(
+  apiKey,
+  prompt,
+  callback,
+  {
+    model: "gpt-3.5-turbo",
+    temperature: 0.7,
+    max_tokens: 500
+  },
+  15
+);
+```
+
+### Use different LLM providers
+
+<Tip>
+This example uses OpenAI via [axflow](https://axflow.dev), but you can swap in other providers like [Anthropic](https://docs.axflow.dev/documentation/models/anthropic-completion.html), HuggingFace, or [build your own](https://docs.axflow.dev/guides/models/bring-your-own-models.html).
+</Tip>
+
+## Access control
+
+Restrict bot access to specific users:
+
+```typescript
+Bot.addStep(async ($) => {
+  const allowed = ["user@example.com", "admin@example.com"];
+  
+  if (!allowed.includes($.author.email)) {
+    await $.send("Sorry, you don't have access to this agent");
+    return $.end;
+  }
+  
+  return $.next;
+});
+```
+
+## Related examples
+
+For a more complete implementation with conversation context, file uploads, and multiple personas, see:
+
+- [speedybot-gpt4](https://github.com/valgaze/speedybot-gpt4) - Full-featured LLM bot with state management
+- [Azure example](https://github.com/valgaze/speedybot/tree/v2/examples/azure) - Includes document uploads and RAG patterns

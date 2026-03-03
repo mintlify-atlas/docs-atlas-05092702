@@ -1,0 +1,587 @@
+---
+title: Webhooks
+description: Setting up and handling WebEx webhooks with SpeedyBot
+---
+
+## Overview
+
+Webhooks are HTTP callbacks that notify your bot about events in WebEx. When a user sends a message, uploads a file, or submits a card, WebEx sends a webhook to your bot's endpoint.
+
+<Info>
+SpeedyBot requires two webhook types:
+1. **Firehose webhook** - For messages and file uploads
+2. **AttachmentActions webhook** - For card submissions
+</Info>
+
+## Webhook setup
+
+### Quick setup
+
+SpeedyBot provides a `Setup()` method that creates both required webhooks:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+Bot.setToken(process.env.BOT_TOKEN!);
+
+// Create both webhooks in one call
+await Bot.Setup(
+  'https://your-server.com/webhook', // Your public URL
+  'my-webhook-secret'                // Optional secret for validation
+);
+```
+
+**Type signature:**
+```typescript
+Setup(url: string, secret: string): Promise<[Webhook, Webhook]>
+```
+
+### Manual setup
+
+Create webhooks individually for more control:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+Bot.setToken(process.env.BOT_TOKEN!);
+
+const url = 'https://your-server.com/webhook';
+const secret = 'my-secret-key';
+
+// Create firehose webhook (messages)
+const messageWebhook = await Bot.createFirehose(url, secret);
+
+// Create attachment actions webhook (cards)
+const cardWebhook = await Bot.createAttachmentActionsWebhook(url, secret);
+
+console.log('Webhooks created:', {
+  messages: messageWebhook.id,
+  cards: cardWebhook.id,
+});
+```
+
+## Processing webhooks
+
+### Basic webhook handler
+
+The `runMiddleware()` method processes incoming webhooks through your bot's steps:
+
+```typescript
+import { SpeedyBot, ENVELOPES } from 'speedybot';
+import express from 'express';
+
+const app = express();
+const Bot = new SpeedyBot();
+
+Bot.setToken(process.env.BOT_TOKEN!);
+
+// Add your bot steps
+Bot.addStep(async ($) => {
+  if ($.text) {
+    await $.send(`You said: ${$.text}`);
+  }
+  return $.next;
+});
+
+// Webhook endpoint
+app.post('/webhook', express.json(), async (req, res) => {
+  const webhook = req.body as ENVELOPES;
+  
+  // Process the webhook
+  await Bot.runMiddleware(webhook);
+  
+  res.send('OK');
+});
+
+app.listen(3000, () => {
+  console.log('Bot listening on port 3000');
+});
+```
+
+**Type signature:**
+```typescript
+runMiddleware(
+  envelope: ENVELOPES,
+  startingCtx?: { [key: string]: string | number }
+): Promise<boolean>
+```
+
+### With initial context
+
+You can pass initial context values to `runMiddleware()`:
+
+```typescript
+app.post('/webhook', express.json(), async (req, res) => {
+  const webhook = req.body as ENVELOPES;
+  
+  // Pass initial context
+  await Bot.runMiddleware(webhook, {
+    environment: 'production',
+    serverTime: Date.now(),
+    requestId: req.headers['x-request-id'],
+  });
+  
+  res.send('OK');
+});
+```
+
+## Webhook validation
+
+Validate webhook authenticity using the signature header:
+
+<CodeGroup>
+```typescript Crypto validation
+import crypto from 'crypto';
+import { SpeedyBot, ENVELOPES } from 'speedybot';
+import express from 'express';
+
+const app = express();
+const Bot = new SpeedyBot();
+const SECRET = process.env.WEBHOOK_SECRET!;
+
+Bot.setToken(process.env.BOT_TOKEN!);
+
+// Validation function
+function validateWebhook(
+  signature: string,
+  secret: string,
+  requestBody: string
+): boolean {
+  const hmac = crypto.createHmac('sha1', secret);
+  const hash = hmac.update(requestBody).digest('hex');
+  return signature === hash;
+}
+
+// Webhook endpoint with validation
+app.post(
+  '/webhook',
+  express.json({ verify: (req, res, buf) => {
+    // Store raw body for signature validation
+    (req as any).rawBody = buf.toString();
+  }}),
+  async (req, res) => {
+    const signature = req.headers['x-spark-signature'] as string;
+    const rawBody = (req as any).rawBody;
+    
+    // Validate signature
+    if (!validateWebhook(signature, SECRET, rawBody)) {
+      console.error('Invalid webhook signature');
+      return res.status(401).send('Unauthorized');
+    }
+    
+    // Process valid webhook
+    const webhook = req.body as ENVELOPES;
+    await Bot.runMiddleware(webhook);
+    
+    res.send('OK');
+  }
+);
+
+app.listen(3000);
+```
+
+```typescript Web Crypto API
+// For Cloudflare Workers, Deno, etc.
+async function validateWebhook(
+  signature: string,
+  secret: string,
+  requestBody: string
+): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secret);
+  const data = encoder.encode(requestBody);
+  
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign']
+  );
+  
+  const signatureBuffer = await crypto.subtle.sign('HMAC', key, data);
+  const hash = Array.from(new Uint8Array(signatureBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  
+  return signature === hash;
+}
+```
+</CodeGroup>
+
+## Managing webhooks
+
+### List webhooks
+
+Get all webhooks registered for your bot:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+Bot.setToken(process.env.BOT_TOKEN!);
+
+// Get full webhook details
+const { items } = await Bot.getWebhooks();
+console.log('All webhooks:', items);
+
+// Get abbreviated list
+const webhooks = await Bot.fetchWebhooks();
+webhooks.forEach(webhook => {
+  console.log(webhook.id, webhook.name, webhook.targetUrl);
+});
+```
+
+**Type signatures:**
+```typescript
+getWebhooks(): Promise<{ items: Webhook[] }>
+
+fetchWebhooks(): Promise<{
+  id: string;
+  name: string;
+  resource: string;
+  targetUrl: string;
+}[]>
+```
+
+### Delete webhooks
+
+Remove a webhook by ID:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+Bot.setToken(process.env.BOT_TOKEN!);
+
+// Delete specific webhook
+await Bot.deleteWebhook('webhook-id-here');
+
+// Delete all webhooks
+const { items } = await Bot.getWebhooks();
+for (const webhook of items) {
+  await Bot.deleteWebhook(webhook.id);
+  console.log(`Deleted webhook: ${webhook.name}`);
+}
+```
+
+**Type signature:**
+```typescript
+deleteWebhook(webhookId: string): Promise<void>
+```
+
+## Webhook types
+
+SpeedyBot handles two types of webhook envelopes:
+
+### Message envelope
+
+For text messages and file uploads:
+
+```typescript
+type MessageEnvelope = {
+  id: string;
+  name: string;
+  targetUrl: string;
+  resource: "messages";
+  event: string;
+  orgId: string;
+  createdBy: string;
+  appId: string;
+  ownedBy: string;
+  status: string;
+  created: Date | string;
+  actorId: string;
+  data: {
+    id: string;
+    roomId: string;
+    roomType: string;
+    text: string;
+    personId: string;
+    personEmail: string;
+    html?: string;
+    mentionedPeople?: string[];
+    created: Date | string;
+    files?: string[];
+    parentId?: string;
+  };
+};
+```
+
+### AttachmentActions envelope
+
+For card submissions:
+
+```typescript
+type AA_Envelope = {
+  id: string;
+  name: string;
+  targetUrl: string;
+  resource: "attachmentActions";
+  event: string;
+  orgId: string;
+  createdBy: string;
+  appId: string;
+  ownedBy: string;
+  status: string;
+  created: Date | string;
+  actorId: string;
+  data: {
+    id: string;
+    type: string;
+    messageId: string;
+    personId: string;
+    roomId: string;
+    created: Date | string;
+  };
+};
+```
+
+### Combined type
+
+```typescript
+import type { ENVELOPES } from 'speedybot';
+
+// ENVELOPES = MessageEnvelope | AA_Envelope
+function handleWebhook(webhook: ENVELOPES) {
+  if (webhook.resource === 'messages') {
+    console.log('Message event');
+  } else if (webhook.resource === 'attachmentActions') {
+    console.log('Card submission event');
+  }
+}
+```
+
+## Platform examples
+
+<Tabs>
+  <Tab title="Express">
+    ```typescript
+    import express from 'express';
+    import { SpeedyBot, ENVELOPES } from 'speedybot';
+    
+    const app = express();
+    const Bot = new SpeedyBot();
+    
+    Bot.setToken(process.env.BOT_TOKEN!);
+    
+    Bot.addStep(async ($) => {
+      if ($.text) {
+        await $.send(`Echo: ${$.text}`);
+      }
+      return $.next;
+    });
+    
+    app.post('/webhook', express.json(), async (req, res) => {
+      try {
+        await Bot.runMiddleware(req.body as ENVELOPES);
+        res.send('OK');
+      } catch (error) {
+        console.error('Webhook error:', error);
+        res.status(500).send('Error');
+      }
+    });
+    
+    app.listen(3000, async () => {
+      await Bot.Setup('https://my-server.com/webhook', 'secret');
+      console.log('Bot ready on port 3000');
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Cloudflare Workers">
+    ```typescript
+    import { SpeedyBot, ENVELOPES } from 'speedybot';
+    import Bot from './bot';
+    
+    export default {
+      async fetch(request: Request, env: any) {
+        if (request.method !== 'POST') {
+          return new Response('Method not allowed', { status: 405 });
+        }
+        
+        Bot.setToken(env.BOT_TOKEN);
+        
+        const webhook = await request.json() as ENVELOPES;
+        await Bot.runMiddleware(webhook);
+        
+        return new Response('OK');
+      },
+    };
+    ```
+  </Tab>
+  
+  <Tab title="AWS Lambda">
+    ```typescript
+    import { SpeedyBot, ENVELOPES } from 'speedybot';
+    import type { APIGatewayProxyHandler } from 'aws-lambda';
+    import Bot from './bot';
+    
+    export const handler: APIGatewayProxyHandler = async (event) => {
+      Bot.setToken(process.env.BOT_TOKEN!);
+      
+      const webhook = JSON.parse(event.body || '{}') as ENVELOPES;
+      await Bot.runMiddleware(webhook);
+      
+      return {
+        statusCode: 200,
+        body: 'OK',
+      };
+    };
+    ```
+  </Tab>
+  
+  <Tab title="Deno">
+    ```typescript
+    import { serve } from 'https://deno.land/std/http/server.ts';
+    import { SpeedyBot, ENVELOPES } from 'npm:speedybot';
+    import Bot from './bot.ts';
+    
+    const BOT_TOKEN = Deno.env.get('BOT_TOKEN')!;
+    Bot.setToken(BOT_TOKEN);
+    
+    serve(async (req) => {
+      if (req.method !== 'POST') {
+        return new Response('Method not allowed', { status: 405 });
+      }
+      
+      const webhook = await req.json() as ENVELOPES;
+      await Bot.runMiddleware(webhook);
+      
+      return new Response('OK');
+    }, { port: 3000 });
+    ```
+  </Tab>
+</Tabs>
+
+## Error handling
+
+Handle webhook processing errors gracefully:
+
+```typescript
+import { SpeedyBot, ENVELOPES, SpeedyError } from 'speedybot';
+import express from 'express';
+
+const app = express();
+const Bot = new SpeedyBot();
+
+Bot.setToken(process.env.BOT_TOKEN!);
+
+// Error handler
+Bot.captureError(async (error: SpeedyError) => {
+  console.error('Bot error:', error);
+  
+  // Notify user if possible
+  if (error.roomId) {
+    await Bot.sendTo(
+      error.roomId,
+      `Sorry, an error occurred: ${error.message}`
+    );
+  }
+});
+
+// Webhook endpoint
+app.post('/webhook', express.json(), async (req, res) => {
+  try {
+    await Bot.runMiddleware(req.body as ENVELOPES);
+    res.send('OK');
+  } catch (error) {
+    console.error('Webhook processing failed:', error);
+    res.status(500).send('Internal server error');
+  }
+});
+
+app.listen(3000);
+```
+
+## Best practices
+
+<Info>
+Follow these guidelines for reliable webhook handling.
+</Info>
+
+1. **Always validate signatures** in production to prevent spoofed webhooks
+
+2. **Respond quickly**: Return a 200 response immediately, process asynchronously if needed
+
+3. **Use HTTPS**: WebEx requires HTTPS endpoints (except for localhost development)
+
+4. **Handle errors gracefully**: Use `Bot.captureError()` to catch and log errors
+
+5. **Set webhook secrets**: Always use a secret for webhook validation
+
+6. **Monitor webhook health**: Log webhook processing times and errors
+
+7. **Clean up old webhooks**: Delete unused webhooks to avoid confusion
+
+8. **Test locally**: Use tools like ngrok or localtunnel for local development
+
+## Testing webhooks locally
+
+Use tunneling tools to expose your local server:
+
+<Steps>
+  <Step title="Install ngrok">
+    ```bash
+    npm install -g ngrok
+    ```
+  </Step>
+  
+  <Step title="Start your bot">
+    ```bash
+    npm run dev
+    ```
+  </Step>
+  
+  <Step title="Create tunnel">
+    ```bash
+    ngrok http 3000
+    ```
+    
+    Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
+  </Step>
+  
+  <Step title="Create webhooks">
+    ```typescript
+    await Bot.Setup('https://abc123.ngrok.io/webhook', 'secret');
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<Warning>
+Common webhook issues and solutions.
+</Warning>
+
+**Webhooks not received**:
+- Verify your endpoint is publicly accessible via HTTPS
+- Check that your bot token is valid
+- Ensure webhooks are created for the correct URL
+
+**Duplicate webhooks**:
+- List all webhooks with `Bot.getWebhooks()`
+- Delete duplicates with `Bot.deleteWebhook(id)`
+
+**Invalid signature errors**:
+- Verify you're using the same secret used when creating the webhook
+- Ensure you're validating the raw request body, not parsed JSON
+
+**Bot not responding**:
+- Check your bot steps return `$.next` or `$.end`
+- Add logging to see which steps execute
+- Use `Bot.captureError()` to catch exceptions
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="SpeedyBot basics" icon="rocket" href="/concepts/speedybot-basics">
+    Review core concepts
+  </Card>
+  
+  <Card title="Deployment examples" icon="cloud" href="/examples/overview">
+    See platform-specific examples
+  </Card>
+</CardGroup>

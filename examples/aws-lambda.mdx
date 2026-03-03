@@ -1,0 +1,399 @@
+---
+title: AWS Lambda deployment
+description: Deploy SpeedyBot to AWS Lambda with serverless infrastructure
+---
+
+AWS Lambda provides serverless compute that scales automatically. This example uses [SST (Serverless Stack)](https://ion.sst.dev/docs) to manage infrastructure as code, making deployment and configuration straightforward.
+
+## Prerequisites
+
+- WebEx account ([sign up](https://developer.webex.com/signup))
+- AWS account with Lambda permissions
+- Node.js 18.11.0 or higher
+- AWS CLI configured ([setup guide](https://sst.dev/chapters/configure-the-aws-cli.html))
+
+## Quick start
+
+<Steps>
+  <Step title="Clone and install">
+    ```bash
+    git clone https://github.com/valgaze/speedybot
+    cd speedybot/examples/lambda
+    npm install
+    ```
+
+    <Info>
+    Bot code is in `packages/functions/src/settings/bot.ts` and Lambda handler is in `packages/functions/src/lambda.ts`
+    </Info>
+  </Step>
+
+  <Step title="Get your bot token">
+    - Existing bot: [developer.webex.com/my-apps](https://developer.webex.com/my-apps)
+    - New bot: [developer.webex.com/my-apps/new/bot](https://developer.webex.com/my-apps/new/bot)
+  </Step>
+
+  <Step title="Create environment file">
+    Copy `.env.example` to `.env`:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env`:
+    ```bash
+    BOT_TOKEN=your_bot_token_here
+    WEBHOOK_SECRET=your_chosen_secret
+    ```
+
+    <Warning>
+    Never commit `.env` to source control. It's already in `.gitignore`.
+    </Warning>
+  </Step>
+
+  <Step title="Configure AWS credentials">
+    Set up IAM user:
+    1. Follow [IAM setup guide](https://sst.dev/chapters/create-an-iam-user.html)
+    2. Configure AWS CLI: [configuration guide](https://sst.dev/chapters/configure-the-aws-cli.html)
+  </Step>
+
+  <Step title="Deploy to AWS">
+    ```bash
+    npm run deploy
+    ```
+
+    Save the URL from the output (looks like `https://abcd123456.execute-api.us-east-1.amazonaws.com`).
+  </Step>
+
+  <Step title="Register webhook">
+    Use [SpeedyBot Garage](https://speedybot.js.org/garage):
+    1. Enter your bot token
+    2. Go to Webhooks tab
+    3. Add your Lambda URL + `/speedybot` endpoint
+    4. Set the webhook secret (same as in `.env`)
+
+    <Note>
+    The SST configuration captures WebEx requests on the `/speedybot` route. You can change this in `stacks/MyStack.ts`.
+    </Note>
+  </Step>
+</Steps>
+
+## Lambda handler code
+
+The Lambda function processes webhooks via API Gateway:
+
+```typescript packages/functions/src/lambda.ts
+import { SpeedyBot } from 'speedybot';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { Bot } from './settings/bot';
+
+export async function handler(
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> {
+  const botToken = process.env.BOT_TOKEN;
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+
+  if (!botToken) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'BOT_TOKEN not configured' }),
+    };
+  }
+
+  const bot = new SpeedyBot(botToken);
+  
+  // Initialize bot with your steps
+  Bot(bot);
+
+  // Validate webhook signature
+  if (webhookSecret && event.headers['x-spark-signature']) {
+    const signature = event.headers['x-spark-signature'];
+    const isValid = bot.validateSignature(
+      event.body || '',
+      webhookSecret,
+      signature
+    );
+
+    if (!isValid) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ error: 'Invalid signature' }),
+      };
+    }
+  }
+
+  try {
+    const webhook = JSON.parse(event.body || '{}');
+    await bot.runMiddleware(webhook);
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ status: 'ok' }),
+    };
+  } catch (error) {
+    console.error('Error processing webhook:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Internal server error' }),
+    };
+  }
+}
+```
+
+## Bot configuration
+
+Define your bot logic in a separate file:
+
+```typescript packages/functions/src/settings/bot.ts
+import { SpeedyBot } from 'speedybot';
+
+export function Bot(bot: SpeedyBot) {
+  bot.addStep(async ($) => {
+    if ($.text === 'hello') {
+      await $.reply('Hi there!');
+    }
+    return $.next;
+  });
+
+  bot.addStep(async ($) => {
+    const card = $.card()
+      .addTitle('SpeedyBot on Lambda')
+      .addText('Running serverless!');
+    await $.send(card);
+    return $.end;
+  });
+}
+```
+
+## SST stack configuration
+
+Customize your infrastructure in `stacks/MyStack.ts`:
+
+```typescript stacks/MyStack.ts
+import { StackContext, Api } from 'sst/constructs';
+
+export function API({ stack }: StackContext) {
+  const api = new Api(stack, 'api', {
+    routes: {
+      'POST /speedybot': 'packages/functions/src/lambda.handler',
+    },
+  });
+
+  stack.addOutputs({
+    ApiEndpoint: api.url,
+  });
+}
+```
+
+## Local development
+
+SST enables local development with live AWS service connections:
+
+<Steps>
+  <Step title="Install function dependencies">
+    ```bash
+    cd packages/functions/src
+    npm install
+    ```
+  </Step>
+
+  <Step title="Start dev mode">
+    ```bash
+    npm run dev
+    ```
+
+    This runs your code locally but connects to real AWS services.
+  </Step>
+
+  <Step title="Test locally">
+    Send a test webhook to your local endpoint (SST provides a URL).
+  </Step>
+</Steps>
+
+## Environment variables
+
+SST supports multiple ways to provide environment variables:
+
+### From .env file
+
+```typescript sst.config.ts
+export default {
+  config() {
+    return {
+      name: 'speedybot-lambda',
+      region: 'us-east-1',
+    };
+  },
+  stacks(app) {
+    app.stack(API);
+  },
+} satisfies SSTConfig;
+```
+
+### Directly in stack
+
+```typescript stacks/MyStack.ts
+const api = new Api(stack, 'api', {
+  defaults: {
+    function: {
+      environment: {
+        BOT_TOKEN: process.env.BOT_TOKEN!,
+        WEBHOOK_SECRET: process.env.WEBHOOK_SECRET!,
+      },
+    },
+  },
+  routes: {
+    'POST /speedybot': 'packages/functions/src/lambda.handler',
+  },
+});
+```
+
+## Webhook validation
+
+Always validate webhooks to prevent unauthorized requests:
+
+```typescript
+import crypto from 'crypto';
+
+function validateWebhookSignature(
+  payload: string,
+  secret: string,
+  signature: string
+): boolean {
+  const hmac = crypto.createHmac('sha1', secret);
+  hmac.update(payload);
+  const expected = hmac.digest('hex');
+  return signature === expected;
+}
+```
+
+## Deployment options
+
+### Deploy to specific stage
+
+```bash
+npm run deploy -- --stage production
+```
+
+### Deploy to specific region
+
+Edit `sst.config.ts`:
+
+```typescript
+export default {
+  config() {
+    return {
+      name: 'speedybot-lambda',
+      region: 'eu-west-1', // Change region
+    };
+  },
+};
+```
+
+### Remove deployment
+
+```bash
+npx sst remove
+```
+
+## Monitoring and logs
+
+### View logs
+
+```bash
+# View live logs
+npx sst logs --stage production
+
+# View CloudWatch logs
+aws logs tail /aws/lambda/speedybot-lambda --follow
+```
+
+### CloudWatch metrics
+
+Monitor in AWS Console:
+- Invocations
+- Duration
+- Error rate
+- Throttles
+
+## Cost optimization
+
+<AccordionGroup>
+  <Accordion title="Adjust memory allocation">
+    Lambda pricing is based on memory and duration. Test different memory sizes:
+
+    ```typescript
+    const api = new Api(stack, 'api', {
+      defaults: {
+        function: {
+          memory: 512, // MB (default is 1024)
+        },
+      },
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Set timeout">
+    Reduce timeout to prevent long-running invocations:
+
+    ```typescript
+    const api = new Api(stack, 'api', {
+      defaults: {
+        function: {
+          timeout: 10, // seconds
+        },
+      },
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Use reserved concurrency">
+    Control concurrent executions to manage costs:
+
+    ```typescript
+    const api = new Api(stack, 'api', {
+      defaults: {
+        function: {
+          reservedConcurrentExecutions: 5,
+        },
+      },
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Deployment fails
+
+Check AWS credentials:
+```bash
+aws sts get-caller-identity
+```
+
+### Lambda returns 401
+
+Bot token is missing or invalid. Check environment variables:
+```bash
+aws lambda get-function-configuration --function-name your-function-name
+```
+
+### Webhook signature validation fails
+
+Ensure `WEBHOOK_SECRET` in Lambda matches your webhook registration.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Error handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Implement robust error handling
+  </Card>
+  <Card title="CloudWatch integration" icon="chart-line" href="/guides/deployment">
+    Set up monitoring and alerts
+  </Card>
+  <Card title="SpeedyCards" icon="window" href="/speedycards/overview">
+    Build interactive cards
+  </Card>
+  <Card title="File handling" icon="file" href="/guides/handling-files">
+    Process file uploads
+  </Card>
+</CardGroup>

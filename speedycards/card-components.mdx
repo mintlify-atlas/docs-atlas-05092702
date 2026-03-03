@@ -1,0 +1,472 @@
+---
+title: Card components
+description: Available components including chips, forms, tables, and interactive elements
+---
+
+## Chips
+
+Chips are quick-action buttons that appear at the bottom of a card. They're perfect for providing users with common responses or actions.
+
+### addChip
+
+Add a single chip.
+
+```typescript
+addChip(
+  payload: string | { title: string; value?: string },
+  id?: string
+): SpeedyCard
+```
+
+### addChips
+
+Add multiple chips at once.
+
+```typescript
+addChips(
+  chips: (string | { title: string; value?: string })[],
+  id?: string
+): SpeedyCard
+```
+
+<CodeGroup>
+```typescript Simple chips
+const card = $.card()
+  .addTitle('Quick Actions')
+  .addChips(['Yes', 'No', 'Maybe']);
+
+Bot.addStep(async ($) => {
+  if ($.data?.chip_result) {
+    await $.send(`You selected: ${$.data.chip_result}`);
+  }
+  return $.next;
+});
+```
+
+```typescript Custom values
+const card = $.card()
+  .addTitle('Select an option')
+  .addChips([
+    { title: '👍 Approve', value: 'approved' },
+    { title: '👎 Reject', value: 'rejected' },
+    { title: '⏸️ Hold', value: 'on_hold' }
+  ]);
+
+Bot.addStep(async ($) => {
+  if ($.data?.chip_result === 'approved') {
+    await $.send('Request approved!');
+  }
+  return $.next;
+});
+```
+
+```typescript Custom ID
+const card = $.card()
+  .addTitle('Rate your experience')
+  .addChips(
+    ['⭐', '⭐⭐', '⭐⭐⭐', '⭐⭐⭐⭐', '⭐⭐⭐⭐⭐'],
+    'rating'
+  );
+
+Bot.addStep(async ($) => {
+  if ($.data?.rating) {
+    await $.send(`Thanks for rating: ${$.data.rating}`);
+  }
+  return $.next;
+});
+```
+</CodeGroup>
+
+<Note>
+Chips automatically send their value to your bot when tapped, making them ideal for quick yes/no questions or menu selections.
+</Note>
+
+## Form inputs
+
+### Text input
+
+Add a single-line text input field.
+
+```typescript
+addTextInput(placeholder: string, id?: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('Contact Form')
+  .addTextInput('Your name', 'name')
+  .addTextInput('Email address', 'email');
+
+Bot.addStep(async ($) => {
+  if ($.data?.name && $.data?.email) {
+    await $.send(`Thanks ${$.data.name}! We'll contact you at ${$.data.email}`);
+  }
+  return $.next;
+});
+```
+
+### Textarea
+
+Add a multi-line text input field.
+
+```typescript
+addTextarea(placeholder: string, id?: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('Feedback')
+  .addText('Please share your thoughts:')
+  .addTextarea('Enter your feedback here', 'feedback');
+
+Bot.addStep(async ($) => {
+  if ($.data?.feedback) {
+    await $.send(`Thank you for your feedback:\n${$.data.feedback}`);
+  }
+  return $.next;
+});
+```
+
+## Dropdowns and selects
+
+### Picker dropdown
+
+Add a dropdown menu for selecting a single option.
+
+```typescript
+addPickerDropdown(
+  choices: (string | number | { title: string; value: string | number })[],
+  id?: string
+): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('Select your department')
+  .addPickerDropdown([
+    'Engineering',
+    'Sales',
+    'Marketing',
+    'Support',
+    'Finance'
+  ], 'department');
+
+// With custom values
+const card2 = $.card()
+  .addTitle('Select priority')
+  .addPickerDropdown([
+    { title: 'Low Priority', value: 'low' },
+    { title: 'Medium Priority', value: 'medium' },
+    { title: 'High Priority', value: 'high' },
+    { title: 'Critical', value: 'critical' }
+  ], 'priority');
+```
+
+### Single select
+
+Add radio buttons for selecting one option from a list.
+
+```typescript
+addSingleSelect(
+  choices: (string | number)[] | { title: string; value: string }[],
+  id?: string
+): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('How would you rate our service?')
+  .addSingleSelect([
+    'Excellent',
+    'Good',
+    'Fair',
+    'Poor'
+  ], 'service_rating');
+```
+
+### Multi select
+
+Add checkboxes for selecting multiple options.
+
+```typescript
+addMultiSelect(
+  choices: (string | number)[] | { title: string; value: string }[],
+  id?: string
+): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('Select your interests')
+  .addMultiSelect([
+    'Product Updates',
+    'Company News',
+    'Technical Blog',
+    'Event Invitations',
+    'Partner Offers'
+  ], 'interests');
+
+Bot.addStep(async ($) => {
+  if ($.data?.interests) {
+    // Multi-select returns comma-separated values
+    const selected = $.data.interests.split(',');
+    await $.send(`You selected: ${selected.join(', ')}`);
+  }
+  return $.next;
+});
+```
+
+## Date and time pickers
+
+### Date picker
+
+Add a date picker input.
+
+```typescript
+addPickerDate(textLabel: string, id?: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('Schedule Meeting')
+  .addPickerDate('Select a date', 'meeting_date');
+
+Bot.addStep(async ($) => {
+  if ($.data?.meeting_date) {
+    await $.send(`Meeting scheduled for ${$.data.meeting_date}`);
+  }
+  return $.next;
+});
+```
+
+### Time picker
+
+Add a time picker input.
+
+```typescript
+addPickerTime(textLabel: string, id?: string): SpeedyCard
+```
+
+```typescript
+const card = $.card()
+  .addTitle('Schedule Meeting')
+  .addPickerDate('Select a date', 'meeting_date')
+  .addPickerTime('Select a time', 'meeting_time');
+
+Bot.addStep(async ($) => {
+  if ($.data?.meeting_date && $.data?.meeting_time) {
+    await $.send(`Meeting scheduled for ${$.data.meeting_date} at ${$.data.meeting_time}`);
+  }
+  return $.next;
+});
+```
+
+## Survey helper
+
+The `survey()` method provides a convenient way to create multi-question forms.
+
+```typescript
+survey(
+  questions: SurveyQuestion[],
+  title?: string
+): SpeedyCard
+```
+
+### Survey question types
+
+- `text` - Single-line text input
+- `textarea` - Multi-line text input
+- `single-select` - Radio buttons
+- `multi-select` - Checkboxes
+- `picker-dropdown` - Dropdown menu
+- `picker-date` - Date picker
+- `picker-time` - Time picker
+
+<Accordion title="Complete survey example">
+```typescript
+import { SurveyQuestion } from 'speedybot';
+
+const surveyQuestions: SurveyQuestion[] = [
+  {
+    type: 'text',
+    question: 'What is your company name?',
+    id: 'company_name'
+  },
+  {
+    type: 'picker-date',
+    question: 'When was the service provided?',
+    id: 'service_date'
+  },
+  {
+    type: 'single-select',
+    question: 'How would you rate the quality?',
+    choices: ['Excellent', 'Good', 'Average', 'Poor'],
+    id: 'quality_rating'
+  },
+  {
+    type: 'multi-select',
+    question: 'What were the highlights?',
+    choices: [
+      'Communication',
+      'Punctuality',
+      'Quality',
+      'Value'
+    ],
+    id: 'highlights'
+  },
+  {
+    type: 'textarea',
+    question: 'Additional comments',
+    id: 'comments'
+  },
+  {
+    type: 'picker-time',
+    question: 'Preferred contact time',
+    id: 'contact_time'
+  },
+  {
+    type: 'picker-dropdown',
+    question: 'Preferred contact method',
+    choices: ['Email', 'Phone', 'Text'],
+    id: 'contact_method'
+  }
+];
+
+const card = $.card().survey(surveyQuestions, '📝 Customer Survey');
+await $.send(card);
+```
+</Accordion>
+
+## Tables
+
+Display structured data in a clean table format.
+
+### Array format
+
+Pass a 2D array where the first row is the header:
+
+```typescript
+const card = $.card()
+  .addTitle('Server Status')
+  .addTable([
+    ['Server', 'Status', 'Uptime'],
+    ['web-01', 'Online', '99.9%'],
+    ['web-02', 'Online', '99.8%'],
+    ['db-01', 'Maintenance', '95.2%']
+  ]);
+```
+
+### Object format
+
+Pass a key-value object for simple two-column tables:
+
+```typescript
+const card = $.card()
+  .addTitle('User Profile')
+  .addTable({
+    'Name': 'Jane Doe',
+    'Email': 'jane@example.com',
+    'Role': 'Engineer',
+    'Department': 'Product',
+    'Status': 'Active'
+  });
+```
+
+### With separator
+
+Add a separator line above the table:
+
+```typescript
+const card = $.card()
+  .addText('Below is a summary:')
+  .addTable([
+    ['Metric', 'Value'],
+    ['Total Users', '1,234'],
+    ['Active Today', '567']
+  ], true); // Second parameter adds separator
+```
+
+## Real-world examples
+
+<Accordion title="Acai bowl catering form">
+```typescript
+const card = $.card()
+  .addTitle('AcaiTruck 🍇🚚')
+  .addSubtitle('Customize Your Acai Bowl Experience!')
+  .addText('Welcome to our catering service!')
+  .addPickerDropdown(['Select Bowl Size', 'Mini', 'Midi', 'Grande'])
+  .addPickerDropdown(['Number of People', '1-10', '11-25', '26-50', '50+'])
+  .addTextInput('Anything else we should know?')
+  .addText('Choose toppings:')
+  .addMultiSelect([
+    'Granola',
+    'Peanut Butter',
+    'Coconut',
+    'Goji Berries',
+    'Chia Seeds',
+    'Almonds',
+    'Strawberries',
+    'Blueberries'
+  ])
+  .addText('Catering essentials:')
+  .addMultiSelect([
+    'Utensils',
+    'Napkins',
+    'To-Go Covers',
+    'Smoothie Bar'
+  ])
+  .addTextarea('Special requests or dietary preferences')
+  .setSubmitButtonTitle('Book AcaiTruck 🚀');
+```
+</Accordion>
+
+<Accordion title="Alert cards with backgrounds">
+```typescript
+// Success card
+const successCard = $.card()
+  .addTitle('🏆 Success! 🏆')
+  .addText('Your request has been processed')
+  .setBackgroundImage('data:image/png;base64,...'); // Green pattern
+
+// Warning card
+const warningCard = $.card()
+  .addTitle('⚠️ Warning ⚠️')
+  .addText('Please review before proceeding')
+  .setBackgroundImage('data:image/png;base64,...'); // Yellow pattern
+
+// Danger card
+const dangerCard = $.card()
+  .addTitle('🚨 Alert 🚨')
+  .addText('This action cannot be undone')
+  .setBackgroundImage('data:image/png;base64,...'); // Red pattern
+```
+</Accordion>
+
+<Accordion title="Confirmation dialog">
+```typescript
+const card = $.card()
+  .addTitle('Confirm Action')
+  .addText('Are you sure you want to proceed?')
+  .addButton('❌ Cancel', 'confirmation', { action: 'cancel' })
+  .addButton('✅ Confirm', 'confirmation', { action: 'confirm' });
+
+Bot.addStep(async ($) => {
+  if ($.data?.confirmation) {
+    const { action } = $.data.confirmation;
+    if (action === 'confirm') {
+      await $.send('Action confirmed!');
+      // Proceed with action
+    } else {
+      await $.send('Action cancelled');
+    }
+  }
+  return $.next;
+});
+```
+</Accordion>
+
+## Next steps
+
+<Card title="Handling submissions" icon="paper-plane" href="./handling-submissions">
+  Learn how to process form data from card submissions
+</Card>

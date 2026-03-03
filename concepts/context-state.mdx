@@ -1,0 +1,519 @@
+---
+title: Context state
+description: Managing state between steps using $.ctx in SpeedyBot
+---
+
+## Overview
+
+The `$.ctx` property provides a shared state object that persists across all steps during a single event processing run. Use it to pass data between steps, store flags, or manage conversation state.
+
+<Info>
+The `$.ctx` object is **reset for each new incoming event**. It's not a persistent database - it's temporary state for the current webhook processing.
+</Info>
+
+## Basic usage
+
+### Setting values
+
+Set values in `$.ctx` in any step:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+Bot.addStep(($) => {
+  // Set various types
+  $.ctx.userName = $.author.name;
+  $.ctx.timestamp = Date.now();
+  $.ctx.isAdmin = $.author.email.endsWith('@admin.com');
+  $.ctx.messageCount = 1;
+  
+  return $.next;
+});
+```
+
+### Reading values
+
+Access values set in previous steps:
+
+```typescript
+Bot.addStep(async ($) => {
+  if ($.ctx.isAdmin) {
+    await $.send(`Welcome admin: ${$.ctx.userName}`);
+    await $.send(`Message count: ${$.ctx.messageCount}`);
+  }
+  return $.next;
+});
+```
+
+### Type definition
+
+```typescript
+ctx: {
+  [key: string]: string | number | boolean;
+}
+```
+
+The context object accepts string keys and values of type `string`, `number`, or `boolean`.
+
+## Common patterns
+
+### Pattern 1: Feature flags
+
+Use `$.ctx` to enable or disable features for the current run:
+
+```typescript
+const Bot = new SpeedyBot();
+
+// Set up environment
+Bot.addStep(($) => {
+  $.ctx.isDev = process.env.NODE_ENV === 'development';
+  $.ctx.enableDebug = true;
+  $.ctx.enableAnalytics = false;
+  return $.next;
+});
+
+// Use flags in later steps
+Bot.addStep(async ($) => {
+  if ($.ctx.enableDebug) {
+    await $.send($.buildDataSnippet($.debug()));
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.ctx.isDev) {
+    console.log('Dev mode: Processing message from', $.author.email);
+  }
+  return $.next;
+});
+```
+
+### Pattern 2: Computed values
+
+Store computed or derived values to avoid recalculation:
+
+```typescript
+const Bot = new SpeedyBot();
+
+Bot.addStep(($) => {
+  // Compute once, use multiple times
+  $.ctx.isInternal = $.author.domain === 'mycompany.com';
+  $.ctx.isWeekend = [0, 6].includes(new Date().getDay());
+  $.ctx.messageLength = $.text?.length || 0;
+  $.ctx.hasSpecialChar = /[!@#$%^&*]/.test($.text || '');
+  
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.ctx.isInternal && $.ctx.isWeekend) {
+    await $.send('Working on the weekend? Take a break!');
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.ctx.messageLength > 500) {
+    await $.send('That was a long message!');
+  }
+  return $.next;
+});
+```
+
+### Pattern 3: Step coordination
+
+Coordinate behavior across multiple steps:
+
+<CodeGroup>
+```typescript Example 1: Skip flag
+const Bot = new SpeedyBot();
+
+Bot.addStep(($) => {
+  // Check if user is allowed
+  $.ctx.shouldSkip = !$.author.email.endsWith('@approved.com');
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.ctx.shouldSkip) {
+    await $.send('You are not authorized');
+    return $.end; // Stop processing
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  // Only authorized users reach here
+  await $.send('Authorized! Processing your request...');
+  return $.next;
+});
+```
+
+```typescript Example 2: Counter
+const Bot = new SpeedyBot();
+
+Bot.addStep(($) => {
+  $.ctx.stepsCompleted = 0;
+  return $.next;
+});
+
+Bot.addStep(($) => {
+  $.ctx.stepsCompleted++;
+  return $.next;
+});
+
+Bot.addStep(($) => {
+  $.ctx.stepsCompleted++;
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  $.ctx.stepsCompleted++;
+  await $.send(`Completed ${$.ctx.stepsCompleted} steps`);
+  return $.next;
+});
+```
+
+```typescript Example 3: Data collection
+const Bot = new SpeedyBot();
+
+Bot.addStep(($) => {
+  $.ctx.collectedData = '';
+  return $.next;
+});
+
+Bot.addStep(($) => {
+  if ($.text) {
+    $.ctx.collectedData += $.text + ' ';
+  }
+  return $.next;
+});
+
+Bot.addStep(($) => {
+  if ($.file) {
+    $.ctx.collectedData += `[File: ${$.file.name}] `;
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  await $.send(`Summary: ${$.ctx.collectedData}`);
+  return $.next;
+});
+```
+</CodeGroup>
+
+### Pattern 4: Conversation state
+
+Manage multi-turn conversations:
+
+```typescript
+const Bot = new SpeedyBot();
+
+Bot.addStep(async ($) => {
+  if ($.text === 'start survey') {
+    $.ctx.surveyActive = true;
+    $.ctx.surveyStep = 1;
+    await $.send('What is your name?');
+    return $.end;
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.ctx.surveyActive && $.ctx.surveyStep === 1) {
+    $.ctx.surveyName = $.text || '';
+    $.ctx.surveyStep = 2;
+    await $.send(`Nice to meet you, ${$.ctx.surveyName}! What's your email?`);
+    return $.end;
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.ctx.surveyActive && $.ctx.surveyStep === 2) {
+    const name = $.ctx.surveyName;
+    const email = $.text;
+    await $.send(`Thanks! Name: ${name}, Email: ${email}`);
+    // Clear survey state
+    $.ctx.surveyActive = false;
+    $.ctx.surveyStep = 0;
+    return $.end;
+  }
+  return $.next;
+});
+```
+
+<Warning>
+The conversation state pattern above only works within a single message. For true multi-message conversations, you'll need external storage (database, cache, etc.).
+</Warning>
+
+## Practical examples
+
+### Example 1: Debug mode
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+// Initialize debug flag
+Bot.addStep(($) => {
+  $.ctx.isDev = process.env.NODE_ENV === 'development';
+  return $.next;
+});
+
+// Your regular steps
+Bot.addStep(async ($) => {
+  if ($.text === 'hello') {
+    await $.send(`Hi ${$.author.name}!`);
+  }
+  return $.next;
+});
+
+// Debug output at the end
+Bot.addStep(async ($) => {
+  if ($.ctx.isDev) {
+    const debug = $.debug();
+    await $.send('Debug info:');
+    await $.send($.buildDataSnippet(debug));
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+### Example 2: User permissions
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+const ADMIN_EMAILS = ['admin@company.com', 'super@company.com'];
+const ALLOWED_DOMAINS = ['company.com', 'partner.com'];
+
+// Check permissions early
+Bot.addStep(($) => {
+  $.ctx.isAdmin = ADMIN_EMAILS.includes($.author.email);
+  $.ctx.isAllowedDomain = ALLOWED_DOMAINS.includes($.author.domain);
+  $.ctx.isAuthorized = $.ctx.isAdmin || $.ctx.isAllowedDomain;
+  return $.next;
+});
+
+// Admin-only command
+Bot.addStep(async ($) => {
+  if ($.text === 'admin panel') {
+    if (!$.ctx.isAdmin) {
+      await $.send('Access denied: Admin only');
+      return $.end;
+    }
+    await $.send('Opening admin panel...');
+    return $.end;
+  }
+  return $.next;
+});
+
+// Authorized users only
+Bot.addStep(async ($) => {
+  if (!$.ctx.isAuthorized) {
+    await $.send('Access denied: Authorized users only');
+    return $.end;
+  }
+  return $.next;
+});
+
+// Rest of your bot logic
+Bot.addStep(async ($) => {
+  await $.send('Welcome authorized user!');
+  return $.next;
+});
+
+export default Bot;
+```
+
+### Example 3: Temporary data storage
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+Bot.addStep(($) => {
+  // Store some random data for later use
+  $.ctx.sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  $.ctx.processingTime = Date.now();
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.text === 'showcard') {
+    const card = $.card()
+      .addTitle('Session Information')
+      .addText(`Session ID: ${$.ctx.sessionId}`);
+    await $.send(card);
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  // Calculate processing time
+  const elapsed = Date.now() - ($.ctx.processingTime as number);
+  if ($.ctx.isDev) {
+    await $.send(`Processing time: ${elapsed}ms`);
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+### Example 4: Feature toggling
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+// Feature flags from environment
+Bot.addStep(($) => {
+  $.ctx.features = {
+    analytics: process.env.ENABLE_ANALYTICS === 'true',
+    experimental: process.env.ENABLE_EXPERIMENTAL === 'true',
+    betaFeatures: process.env.ENABLE_BETA === 'true',
+  };
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  if ($.text === 'beta command') {
+    if (!$.ctx.features.betaFeatures) {
+      await $.send('Beta features are not enabled');
+      return $.end;
+    }
+    await $.send('Running beta command...');
+    return $.end;
+  }
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  // Track analytics if enabled
+  if ($.ctx.features.analytics && $.text) {
+    console.log('Analytics:', {
+      user: $.author.email,
+      message: $.text,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+## Limitations
+
+<Warning>
+The `$.ctx` object has important limitations you should understand.
+</Warning>
+
+1. **Not persistent**: `$.ctx` is reset for every new incoming webhook. It's not a database.
+
+2. **Type restrictions**: Only `string`, `number`, and `boolean` values are supported. You cannot store objects, arrays, or functions.
+
+3. **Single event scope**: The context is only shared between steps processing the same event.
+
+4. **No cross-user state**: Each user's message creates a new context. You can't share state between different users or messages.
+
+### What $.ctx is NOT
+
+Don't use `$.ctx` for:
+
+- ❌ User preferences (use a database)
+- ❌ Conversation history (use a database)
+- ❌ Session management across messages (use external storage)
+- ❌ Complex objects or arrays (types not supported)
+
+### What $.ctx IS
+
+Do use `$.ctx` for:
+
+- ✅ Feature flags for the current run
+- ✅ Computed values to avoid recalculation
+- ✅ Coordination between steps
+- ✅ Temporary flags and counters
+- ✅ Debug mode and development aids
+
+## Type-safe context
+
+For better type safety, you can extend the SpeedyBot types:
+
+```typescript
+import { SpeedyBot, $Magic } from 'speedybot';
+
+// Define your context shape
+interface MyContext {
+  isDev: boolean;
+  isAdmin: boolean;
+  userName: string;
+  timestamp: number;
+}
+
+// Extend the $Magic type (for reference only, doesn't enforce at runtime)
+type MyBot = $Magic & {
+  ctx: MyContext;
+};
+
+const Bot = new SpeedyBot();
+
+Bot.addStep(($) => {
+  // Set context with your defined shape
+  $.ctx.isDev = true;
+  $.ctx.isAdmin = false;
+  $.ctx.userName = $.author.name;
+  $.ctx.timestamp = Date.now();
+  return $.next;
+});
+
+Bot.addStep(async ($) => {
+  // TypeScript will help catch typos
+  if ($.ctx.isDev) {
+    console.log($.ctx.userName, $.ctx.timestamp);
+  }
+  return $.next;
+});
+```
+
+<Note>
+TypeScript typing for `$.ctx` is for development convenience only. SpeedyBot doesn't enforce these types at runtime.
+</Note>
+
+## Best practices
+
+1. **Initialize early**: Set up your context properties in an early step
+
+2. **Use descriptive names**: `$.ctx.isAdmin` is better than `$.ctx.admin`
+
+3. **Clean up when done**: Delete properties you no longer need to keep context clean
+
+4. **Document your context**: Add comments explaining what each property means
+
+5. **Use for coordination**: Great for passing signals between steps
+
+6. **Don't overuse**: If you need persistence, use proper storage
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Middleware steps" icon="layer-group" href="/concepts/middleware-steps">
+    Learn more about step execution
+  </Card>
+  
+  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
+    Set up webhook endpoints
+  </Card>
+</CardGroup>

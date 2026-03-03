@@ -1,0 +1,109 @@
+---
+title: Examples overview
+description: Explore platform-specific examples and deployment guides for SpeedyBot
+---
+
+SpeedyBot includes batteries-included examples that demonstrate deployment across various platforms and services. Whether you need serverless functions, workers, or traditional servers, SpeedyBot adapts to your infrastructure.
+
+## Platform examples
+
+<CardGroup cols={2}>
+  <Card title="Cloudflare Workers" icon="cloud" href="/examples/cloudflare-workers">
+    Deploy to V8 isolates with fast cold starts
+  </Card>
+  <Card title="AWS Lambda" icon="aws" href="/examples/aws-lambda">
+    Serverless deployment with AWS infrastructure
+  </Card>
+  <Card title="Deno Deploy" icon="deno" href="/examples/deno">
+    Run on Deno's edge runtime
+  </Card>
+  <Card title="Standard server" icon="server" href="/examples/standard-server">
+    Deploy to Express.js or any Node.js server
+  </Card>
+</CardGroup>
+
+## Feature examples
+
+<CardGroup cols={2}>
+  <Card title="LLM streaming" icon="robot" href="/examples/llm-streaming">
+    Stream LLM responses with progressive updates
+  </Card>
+  <Card title="Location sharing" icon="location-dot" href="/examples/location-sharing">
+    Privacy-respecting location data collection
+  </Card>
+  <Card title="Voiceflow integration" icon="diagram-project" href="/examples/voiceflow-integration">
+    Visual conversation design with Voiceflow
+  </Card>
+  <Card title="File processing" icon="file" href="/examples/file-processing">
+    Handle file uploads and processing
+  </Card>
+</CardGroup>
+
+## Platform comparison
+
+| Platform | Needs server? | Needs webhooks? | Cold start | Best for |
+|----------|---------------|-----------------|------------|----------|
+| Cloudflare Workers | ❌ | ✅ | ~5-10ms | Production bots with high traffic |
+| AWS Lambda | ❌ | ✅ | ~100-500ms | AWS infrastructure, SST users |
+| Deno Deploy | ❌ | ✅ | ~10-50ms | Modern runtime, TypeScript-first |
+| Standard server | ✅ | ✅ | N/A | Traditional hosting, full control |
+| Websockets | ❌ | ❌ | N/A | Development, testing, demos |
+
+## Getting started with examples
+
+All examples follow a similar pattern:
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/valgaze/speedybot
+    cd speedybot/examples/<example-name>
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Configure your bot token">
+    Get your bot token from [developer.webex.com/my-apps](https://developer.webex.com/my-apps) and add it to your environment.
+  </Step>
+
+  <Step title="Deploy and register webhooks">
+    Follow the platform-specific deployment instructions and register your webhook URL.
+  </Step>
+</Steps>
+
+## Common setup steps
+
+### Get a bot token
+
+1. Create a new bot at [developer.webex.com/my-apps/new/bot](https://developer.webex.com/my-apps/new/bot)
+2. Copy the bot access token (you'll only see it once)
+3. Save it securely - you'll need it for configuration
+
+### Register webhooks
+
+Most platforms require webhooks. Use the [SpeedyBot Garage](https://speedybot.js.org/garage) to:
+
+1. Enter your bot token
+2. Navigate to the Webhooks tab
+3. Add your deployment URL
+4. Set a webhook secret (strongly recommended)
+
+<Warning>
+Always use a webhook secret in production to validate incoming requests and prevent unauthorized access.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Core concepts" icon="book" href="/concepts/speedybot-basics">
+    Learn the fundamentals of SpeedyBot
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/cli/overview">
+    Use the CLI to scaffold projects quickly
+  </Card>
+</CardGroup>

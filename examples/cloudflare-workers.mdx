@@ -1,0 +1,264 @@
+---
+title: Cloudflare Workers deployment
+description: Deploy SpeedyBot to Cloudflare Workers for fast, globally distributed bots
+---
+
+Cloudflare Workers run on V8 isolates with minimal overhead, providing fast cold starts (~5-10ms) and global edge distribution. This makes them ideal for production bots with high traffic.
+
+## Prerequisites
+
+- WebEx account ([sign up](https://developer.webex.com/signup))
+- Cloudflare account ([sign up](https://dash.cloudflare.com/sign-up))
+- Node.js 18.11.0 or higher
+
+## Quick start
+
+<Steps>
+  <Step title="Clone and install">
+    ```bash
+    git clone https://github.com/valgaze/speedybot
+    cd speedybot/examples/worker
+    npm install
+    ```
+  </Step>
+
+  <Step title="Get your bot token">
+    Create a bot and copy its token:
+    - New bot: [developer.webex.com/my-apps/new/bot](https://developer.webex.com/my-apps/new/bot)
+    - Existing bot: [developer.webex.com/my-apps](https://developer.webex.com/my-apps)
+  </Step>
+
+  <Step title="Authenticate with Cloudflare">
+    ```bash
+    npx wrangler login
+    ```
+
+    You'll be prompted to authorize Wrangler in your browser.
+  </Step>
+
+  <Step title="Deploy to get your URL">
+    ```bash
+    npm run deploy
+    ```
+
+    Your Worker URL will look like:
+    ```
+    https://speedybot-worker-infra.your_username.workers.dev
+    ```
+  </Step>
+
+  <Step title="Add your bot token as a secret">
+    ```bash
+    npx wrangler secret put BOT_TOKEN
+    ```
+
+    Paste your bot token when prompted.
+  </Step>
+
+  <Step title="Deploy with token">
+    ```bash
+    npm run deploy
+    ```
+  </Step>
+
+  <Step title="Register webhooks">
+    Use [SpeedyBot Garage](https://speedybot.js.org/garage):
+    1. Enter your bot token
+    2. Go to Webhooks tab
+    3. Add your Worker URL
+    4. Set a webhook secret
+  </Step>
+
+  <Step title="Add webhook secret to Worker">
+    ```bash
+    npx wrangler secret put WEBHOOK_SECRET
+    ```
+
+    Enter the same secret you used in the Garage.
+  </Step>
+</Steps>
+
+## Worker code structure
+
+The Worker handles incoming webhooks with this pattern:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+export interface Env {
+  BOT_TOKEN: string;
+  WEBHOOK_SECRET?: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const Bot = new SpeedyBot(env.BOT_TOKEN);
+    
+    // Add your bot logic
+    Bot.addStep(async ($) => {
+      await $.send(`You said: ${$.text}`);
+      return $.next;
+    });
+
+    // Process webhook
+    if (request.method === 'POST') {
+      const webhook = await request.json();
+      
+      // Validate webhook signature if secret is set
+      if (env.WEBHOOK_SECRET) {
+        const signature = request.headers.get('x-spark-signature');
+        const isValid = Bot.validateSignature(
+          JSON.stringify(webhook),
+          env.WEBHOOK_SECRET,
+          signature || ''
+        );
+        
+        if (!isValid) {
+          return new Response('Invalid signature', { status: 401 });
+        }
+      }
+      
+      await Bot.runMiddleware(webhook);
+      return new Response('OK');
+    }
+    
+    return new Response('SpeedyBot Worker');
+  },
+};
+```
+
+## Managing secrets
+
+Cloudflare Workers use [secrets](https://developers.cloudflare.com/workers/configuration/secrets/) for sensitive data:
+
+```bash
+# Add a secret
+npx wrangler secret put SECRET_NAME
+
+# List secrets (values are hidden)
+npx wrangler secret list
+
+# Delete a secret
+npx wrangler secret delete SECRET_NAME
+```
+
+<Warning>
+Secrets are only available in deployed Workers, not in local development. Use `.dev.vars` file for local secrets.
+</Warning>
+
+## Local development
+
+Create a `.dev.vars` file for local development:
+
+```bash
+BOT_TOKEN=your_token_here
+WEBHOOK_SECRET=your_secret_here
+```
+
+Run locally:
+
+```bash
+npm run dev
+```
+
+<Note>
+Add `.dev.vars` to `.gitignore` to prevent committing secrets.
+</Note>
+
+## Configuration
+
+Edit `wrangler.toml` to customize your Worker:
+
+```toml
+name = "speedybot-worker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Environment variables (non-secret)
+[vars]
+ENVIRONMENT = "production"
+```
+
+## Webhook validation
+
+Always validate webhooks in production:
+
+```typescript src/index.ts
+import crypto from 'crypto';
+
+function validateWebhook(
+  payload: string,
+  secret: string,
+  signature: string
+): boolean {
+  const hmac = crypto.createHmac('sha1', secret);
+  hmac.update(payload);
+  const expectedSignature = hmac.digest('hex');
+  return signature === expectedSignature;
+}
+```
+
+## Deployment best practices
+
+<AccordionGroup>
+  <Accordion title="Use webhook secrets">
+    Always set a webhook secret to validate incoming requests. Without it, anyone who knows your Worker URL can send fake webhooks.
+  </Accordion>
+
+  <Accordion title="Monitor your Worker">
+    Use Cloudflare's dashboard to monitor:
+    - Request volume
+    - Error rates
+    - CPU time
+    - Memory usage
+  </Accordion>
+
+  <Accordion title="Set up error handling">
+    ```typescript
+    Bot.captureError((error) => {
+      console.error('Bot error:', error);
+      // Send to error tracking service
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Use environment-specific configuration">
+    Create separate Workers for staging and production with different secrets and webhook URLs.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Worker returns 401 Unauthorized
+
+Your bot token is invalid or missing:
+```bash
+npx wrangler secret put BOT_TOKEN
+```
+
+### Webhooks not triggering
+
+1. Verify your Worker URL is correct
+2. Check webhook registration in [SpeedyBot Garage](https://speedybot.js.org/garage)
+3. View Worker logs: `npx wrangler tail`
+
+### Signature validation fails
+
+Ensure your `WEBHOOK_SECRET` matches the secret in your webhook registration.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Add error handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Implement robust error handling
+  </Card>
+  <Card title="Build SpeedyCards" icon="window" href="/speedycards/overview">
+    Create rich interactive cards
+  </Card>
+  <Card title="Handle files" icon="file" href="/guides/handling-files">
+    Process file uploads
+  </Card>
+  <Card title="LLM integration" icon="robot" href="/guides/llm-integration">
+    Add AI capabilities
+  </Card>
+</CardGroup>

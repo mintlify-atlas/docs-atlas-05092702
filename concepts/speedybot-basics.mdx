@@ -1,0 +1,303 @@
+---
+title: SpeedyBot basics
+description: Understanding the core architecture and $ parameter in SpeedyBot
+---
+
+## Overview
+
+SpeedyBot is a TypeScript SDK for building WebEx conversation bots with zero external dependencies. It provides a streamlined, step-based architecture that processes user events (messages, cards, file uploads) through a sequence of middleware functions.
+
+## Core architecture
+
+SpeedyBot processes events like a car moving through a carwash - each event flows through a series of steps in order. Each step can:
+
+- Send messages or cards to the user
+- Call external APIs
+- Access and modify shared state
+- Decide whether to continue to the next step
+
+### Creating a bot
+
+Initialize a SpeedyBot instance:
+
+```typescript
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+```
+
+### The $ parameter
+
+Every step receives a `$` parameter (dollar sign) that provides access to the full context of the incoming event. This is the primary interface for interacting with messages, users, and bot functionality.
+
+#### Key properties
+
+<Note>
+The `$` parameter is your one-stop shop for everything you need in a step function.
+</Note>
+
+```typescript
+Bot.addStep(async ($) => {
+  // Message content
+  $.text         // The user's message text
+  $.id           // Message ID
+  $.messageType  // "text" | "file" | "card"
+  
+  // Author information
+  $.author.name    // User's display name
+  $.author.email   // User's email
+  $.author.id      // User's ID
+  $.author.domain  // Email domain
+  $.author.org     // Organization ID
+  $.author.type    // "person" | "bot" | "appuser"
+  
+  // Message context
+  $.msg.roomId          // Room where message was sent
+  $.msg.roomType        // "direct" | "group"
+  $.msg.parentId        // Parent message ID (for threads)
+  $.msg.mentionedPeople // Array of mentioned user IDs
+  
+  // State management
+  $.ctx  // Shared context object for the current run
+  
+  // File uploads
+  $.file?.name         // File name
+  $.file?.extension    // File extension
+  $.file?.contentType  // MIME type
+  $.file?.getData()    // Get file contents
+  
+  // Card submissions
+  $.data  // Form data from adaptive card submissions
+  
+  return $.next;
+});
+```
+
+#### Utility methods
+
+The `$` parameter also provides convenient methods:
+
+```typescript
+Bot.addStep(async ($) => {
+  // Send messages
+  await $.send('Hello!');
+  await $.send($.card().addTitle('My Card'));
+  
+  // Reply to messages (creates a thread)
+  await $.reply('This is a reply');
+  
+  // Edit messages
+  const msg = await $.send('Original');
+  await $.edit(msg, 'Updated');
+  
+  // Create cards
+  const card = $.card({
+    title: 'Quick Card',
+    chips: ['Option 1', 'Option 2']
+  });
+  
+  // Build links
+  const link = $.buildLink('https://example.com', 'Click here');
+  const dmLink = $.buildDMLink('user@example.com', 'Send DM');
+  
+  // Send files
+  await $.sendFile({ key: 'value' }, 'json');
+  
+  // Random selection
+  const item = $.pickRandom(['a', 'b', 'c']);
+  const num = $.pickRandom(1, 10);
+  
+  // Template filling
+  const msg = $.fillTemplate(
+    ['Hello $[name]!', 'Hi $[name]!'],
+    { name: $.author.name }
+  );
+  
+  // Debug information
+  const info = $.debug();
+  const snippet = $.buildDataSnippet(info);
+  
+  return $.next;
+});
+```
+
+## Basic example
+
+<CodeGroup>
+```typescript bot.ts
+import { SpeedyBot } from 'speedybot';
+
+const Bot = new SpeedyBot();
+
+// Step 1: Greet the user
+Bot.addStep(async ($) => {
+  if ($.text) {
+    await $.send(`Hello ${$.author.name}!`);
+  }
+  return $.next;
+});
+
+// Step 2: Handle file uploads
+Bot.addStep(async ($) => {
+  if ($.file) {
+    const { name, extension } = $.file;
+    await $.send(`You uploaded "${name}" (*.${extension})`);
+    
+    // Get file contents if needed
+    // const data = await $.file.getData();
+  }
+  return $.next;
+});
+
+// Step 3: Handle card submissions
+Bot.addStep(async ($) => {
+  if ($.data) {
+    await $.send('Form submitted!');
+    await $.send($.buildDataSnippet($.data));
+  }
+  return $.next;
+});
+
+export default Bot;
+```
+
+```typescript index.ts
+import Bot from './bot';
+import { ENVELOPES } from 'speedybot';
+
+// Set your bot token
+Bot.setToken(process.env.BOT_TOKEN!);
+
+// Process incoming webhooks
+export async function handleWebhook(webhook: ENVELOPES) {
+  await Bot.runMiddleware(webhook);
+}
+```
+</CodeGroup>
+
+## Type definitions
+
+SpeedyBot provides full TypeScript support. Here are the core type signatures:
+
+### $Magic type
+
+```typescript
+type $Magic<T = AttachedData> = {
+  // Flow control
+  next: boolean;
+  end: boolean;
+  
+  // Message data
+  messageType: "card" | "file" | "text";
+  id: string;
+  text?: string;
+  data?: T;
+  file?: SpeedyFileUtils;
+  
+  // Author information
+  author: {
+    domain: string;
+    email: string;
+    id: string;
+    org: string;
+    name: string;
+    type: "person" | "bot" | "appuser";
+    profilePic: string;
+  };
+  
+  // Message context
+  msg: {
+    parentId?: string;
+    roomId: string;
+    roomType: string;
+    mentionedPeople: string[];
+  };
+  
+  // State
+  ctx: {
+    [key: string]: string | number | boolean;
+  };
+  
+  // Methods
+  send(message: Message): Promise<MessageResponse>;
+  reply(message: string): Promise<MessageResponse>;
+  edit(msg: MessageResponse, text: string): Promise<MessageResponse>;
+  card(config?: Partial<AbbreviatedSpeedyCard>): SpeedyCard;
+  sendFile<T>(data: T, fileExtension: string): Promise<MessageResponse>;
+  buildLink(url: string, label?: string, noBold?: boolean): string;
+  buildDMLink(email: string, label: string): string;
+  buildDataSnippet(data: any, type?: string): string;
+  pickRandom<P>(list: P[]): P;
+  pickRandom(min: number, max: number): number;
+  fillTemplate(utterances: string[], template: Record<string, string | number>): string;
+  debug(): DebugInfo;
+  clearScreen(repeatCount?: number): Promise<MessageResponse>;
+};
+```
+
+### Middleware type
+
+```typescript
+type Middleware<T = AttachedData> = (
+  $: $Magic<T>
+) => boolean | Promise<boolean>;
+```
+
+## Best practices
+
+<Tip>
+Keep your steps focused and simple. If you find yourself writing complex logic with many conditionals, consider breaking it into multiple steps or using helper functions.
+</Tip>
+
+<Warning>
+Avoid excessive step processing time. Your bot should respond quickly to keep users engaged. For long-running operations, consider offloading to background jobs.
+</Warning>
+
+1. **Use TypeScript generics** for type-safe card data:
+   ```typescript
+   type MyFormData = { name: string; email: string };
+   
+   Bot.addStep<MyFormData>(async ($) => {
+     if ($.data) {
+       // $.data is now typed as MyFormData
+       console.log($.data.name, $.data.email);
+     }
+     return $.next;
+   });
+   ```
+
+2. **Check message type** before accessing properties:
+   ```typescript
+   if ($.text) {
+     // Text message handling
+   } else if ($.file) {
+     // File handling
+   } else if ($.data) {
+     // Card submission handling
+   }
+   ```
+
+3. **Use shortcuts** for common patterns:
+   - `Bot.exact('keyword', handler)` - Match exact text
+   - `Bot.contains(['word1', 'word2'], handler)` - Match text containing keywords
+   - `Bot.regex(/pattern/, handler)` - Match with regex
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Middleware steps" icon="layer-group" href="/concepts/middleware-steps">
+    Learn about step execution and flow control
+  </Card>
+  
+  <Card title="Context state" icon="database" href="/concepts/context-state">
+    Manage state between steps
+  </Card>
+  
+  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
+    Set up webhook endpoints
+  </Card>
+  
+  <Card title="SpeedyCards" icon="id-card" href="/speedycards/overview">
+    Build interactive cards
+  </Card>
+</CardGroup>
